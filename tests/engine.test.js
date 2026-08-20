@@ -13,11 +13,12 @@ function loadPB() {
   const root = path.join(__dirname, '..');
   const ctx = {
     console, Math, Date, JSON, Object, Array, String, Number, Boolean,
-    parseFloat, parseInt, isNaN
+    parseFloat, parseInt, isNaN, btoa, atob, URLSearchParams, fetch
   };
   ctx.window = ctx;
   vm.createContext(ctx);
-  ['data/airports.js', 'data/programs.js', 'data/charts.js', 'data/cards.js', 'js/engine.js']
+  ['data/airports.js', 'data/programs.js', 'data/charts.js', 'data/cards.js',
+   'js/engine.js', 'js/flights.js']
     .forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   ctx.PB.loadAirports();
   return ctx.PB;
@@ -288,6 +289,120 @@ test('rankCardsForTrip excludes cards already being simulated', () => {
   const ids = ranked.rows.map((r) => r.card.id);
   assert.ok(!ids.includes('csp'));
   assert.ok(!ids.includes('amexplat'));
+});
+
+/* ── Google Flights deep links ─────────────────────────────── */
+
+/* Decodes the tfs protobuf back out so we assert on what the bytes actually
+ * say, not just that a URL was produced. */
+function decodeTfs(url) {
+  const m = /[?&]tfs=([^&]+)/.exec(url);
+  if (!m) return null;
+  const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+  const buf = Buffer.from(b64 + '='.repeat((4 - b64.length % 4) % 4), 'base64');
+
+  const read = (b) => {
+    const out = [];
+    let i = 0;
+    const varint = () => {
+      let r = 0, shift = 0, byte;
+      do { byte = b[i++]; r |= (byte & 0x7f) << shift; shift += 7; } while (byte & 0x80);
+      return r >>> 0;
+    };
+    while (i < b.length) {
+      const key = varint(), field = key >>> 3, wire = key & 7;
+      if (wire === 0) out.push({ field, value: varint() });
+      else if (wire === 2) {
+        const len = varint(), bytes = b.slice(i, i + len);
+        i += len;
+        const ascii = bytes.toString('latin1');
+        out.push(/^[\x20-\x7e]+$/.test(ascii)
+          ? { field, value: ascii }
+          : { field, nested: read(bytes) });
+      } else throw new Error('unexpected wire type ' + wire);
+    }
+    return out;
+  };
+
+  const top = read(buf);
+  const legs = top.filter((f) => f.field === 3).map((leg) => ({
+    date: leg.nested.find((p) => p.field === 2).value,
+    from: leg.nested.find((p) => p.field === 13).nested.find((p) => p.field === 1).value,
+    to:   leg.nested.find((p) => p.field === 14).nested.find((p) => p.field === 1).value
+  }));
+
+  return {
+    legs,
+    passengers: top.filter((f) => f.field === 8).length,
+    seat: (top.find((f) => f.field === 9) || {}).value,
+    trip: (top.find((f) => f.field === 19) || {}).value
+  };
+}
+
+test('deep link carries the exact one-way date, route, and cabin', () => {
+  const url = PB.flights.googleFlightsUrl({
+    from: 'SEA', to: 'SNA', date: '2026-11-15', returnDate: '2026-12-02',
+    roundTrip: false, cabin: 'y', passengers: 1
+  });
+  const d = decodeTfs(url);
+  assert.deepStrictEqual(d.legs, [{ date: '2026-11-15', from: 'SEA', to: 'SNA' }]);
+  assert.strictEqual(d.trip, 2, '2 = one way');
+  assert.strictEqual(d.seat, 1, '1 = economy');
+  assert.strictEqual(d.passengers, 1);
+});
+
+test('an unchecked round trip ignores the stale return date', () => {
+  // The return field keeps its value when you untick "Round trip"; the link
+  // must not smuggle it into the URL.
+  const d = decodeTfs(PB.flights.googleFlightsUrl({
+    from: 'SEA', to: 'SNA', date: '2026-11-15', returnDate: '2026-12-02',
+    roundTrip: false, cabin: 'y', passengers: 1
+  }));
+  assert.strictEqual(d.legs.length, 1);
+});
+
+test('round trips encode both legs, reversed, with both dates', () => {
+  const d = decodeTfs(PB.flights.googleFlightsUrl({
+    from: 'SFO', to: 'NRT', date: '2026-10-03', returnDate: '2026-10-17',
+    roundTrip: true, cabin: 'j', passengers: 2
+  }));
+  assert.deepStrictEqual(d.legs, [
+    { date: '2026-10-03', from: 'SFO', to: 'NRT' },
+    { date: '2026-10-17', from: 'NRT', to: 'SFO' }
+  ]);
+  assert.strictEqual(d.trip, 1, '1 = round trip');
+  assert.strictEqual(d.seat, 3, '3 = business');
+  assert.strictEqual(d.passengers, 2);
+});
+
+test('every cabin maps to its Google seat code', () => {
+  const expected = { y: 1, w: 2, j: 3, f: 4 };
+  Object.keys(expected).forEach((cabin) => {
+    const d = decodeTfs(PB.flights.googleFlightsUrl({
+      from: 'JFK', to: 'LHR', date: '2026-09-01', roundTrip: false, cabin, passengers: 1
+    }));
+    assert.strictEqual(d.seat, expected[cabin], `cabin ${cabin}`);
+  });
+});
+
+test('a missing date falls back to natural-language search, not a broken link', () => {
+  const url = PB.flights.googleFlightsUrl({
+    from: 'JFK', to: 'LHR', date: '', roundTrip: false, cabin: 'f', passengers: 1
+  });
+  assert.ok(url.includes('?q='), 'should fall back');
+  assert.ok(!url.includes('tfs='));
+  assert.ok(url.includes('JFK') && url.includes('LHR'));
+});
+
+test('deep link URLs are safely encoded', () => {
+  const url = PB.flights.googleFlightsUrl({
+    from: 'SFO', to: 'NRT', date: '2026-10-03', returnDate: '2026-10-17',
+    roundTrip: true, cabin: 'j', passengers: 1
+  });
+  assert.ok(url.startsWith('https://www.google.com/travel/flights?tfs='));
+  // base64url only: no +, /, or = that would break the query string.
+  const tfs = /tfs=([^&]+)/.exec(url)[1];
+  assert.match(tfs, /^[A-Za-z0-9_-]+$/);
 });
 
 /* ── Data integrity ────────────────────────────────────────── */

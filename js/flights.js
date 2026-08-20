@@ -119,9 +119,94 @@ window.PB = window.PB || {};
     return Math.round(total / 5) * 5;
   };
 
-  /** Deep link out to Google Flights so you can grab a real price fast. */
+  /* -------------------------------------------------------------------
+   * Google Flights deep links.
+   *
+   * Google Flights takes its search in a `tfs` parameter: a protobuf
+   * message, base64url encoded. It is undocumented and reverse-engineered,
+   * but it is the only form that reliably carries exact dates — the plain
+   * `?q=Flights from X to Y on DATE` natural-language search frequently
+   * drops or misreads the date, which is what googleFlightsSearchUrl()
+   * below is kept around for as a fallback.
+   *
+   * Message shape:
+   *   Info      { repeated FlightData data = 3; repeated int32 passengers = 8;
+   *               int32 seat = 9; int32 trip = 19; }
+   *   FlightData{ string date = 2; repeated Airport from = 13;
+   *               repeated Airport to = 14; }
+   *   Airport   { string code = 1; int32 type = 2; }
+   *
+   * If Google ever changes this, swap the call in googleFlightsUrl() to
+   * googleFlightsSearchUrl() and the app keeps working.
+   * ----------------------------------------------------------------- */
+
+  function varint(n) {
+    var bytes = [];
+    while (n > 127) { bytes.push((n & 0x7f) | 0x80); n >>>= 7; }
+    bytes.push(n);
+    return bytes;
+  }
+
+  function tag(field, wireType) { return varint((field << 3) | wireType); }
+
+  function lengthDelimited(field, bytes) {
+    return tag(field, 2).concat(varint(bytes.length), bytes);
+  }
+
+  function stringField(field, str) {
+    var bytes = [];
+    // IATA codes and ISO dates are ASCII, so a byte-per-char is exact here.
+    for (var i = 0; i < str.length; i++) bytes.push(str.charCodeAt(i) & 0xff);
+    return lengthDelimited(field, bytes);
+  }
+
+  function varintField(field, n) { return tag(field, 0).concat(varint(n)); }
+
+  function airportMsg(code) {
+    return stringField(1, code).concat(varintField(2, 0));
+  }
+
+  function legMsg(from, to, date) {
+    return stringField(2, date)
+      .concat(lengthDelimited(13, airportMsg(from)))
+      .concat(lengthDelimited(14, airportMsg(to)));
+  }
+
+  function base64url(bytes) {
+    var bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  var SEAT_CODE = { y: 1, w: 2, j: 3, f: 4 };
+
+  /** Deep link to Google Flights with the exact route, dates, and cabin. */
   PB.flights.googleFlightsUrl = function (q) {
-    var parts = ['Flights', 'from ' + q.from, 'to ' + q.to];
+    // Without a departure date there is nothing to deep link to; fall back to
+    // the natural-language search so the link still does something useful.
+    if (!q.from || !q.to || !q.date) return PB.flights.googleFlightsSearchUrl(q);
+
+    var roundTrip = !!(q.roundTrip && q.returnDate);
+    var msg = lengthDelimited(3, legMsg(q.from, q.to, q.date));
+
+    if (roundTrip) {
+      msg = msg.concat(lengthDelimited(3, legMsg(q.to, q.from, q.returnDate)));
+    }
+
+    // One entry per adult passenger; 1 = adult.
+    for (var i = 0; i < (q.passengers || 1); i++) msg = msg.concat(varintField(8, 1));
+
+    msg = msg.concat(varintField(9, SEAT_CODE[q.cabin] || 1));
+    msg = msg.concat(varintField(19, roundTrip ? 1 : 2));
+
+    return 'https://www.google.com/travel/flights?tfs=' + base64url(msg) + '&hl=en&curr=USD';
+  };
+
+  /** Natural-language fallback. Google often ignores the date in this form. */
+  PB.flights.googleFlightsSearchUrl = function (q) {
+    var parts = ['Flights'];
+    if (q.from) parts.push('from ' + q.from);
+    if (q.to) parts.push('to ' + q.to);
     if (q.date) parts.push('on ' + q.date);
     if (q.roundTrip && q.returnDate) parts.push('through ' + q.returnDate);
     var cabin = { y: '', w: 'Premium economy', j: 'Business', f: 'First' }[q.cabin];

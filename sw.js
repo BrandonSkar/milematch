@@ -5,7 +5,7 @@
  *
  * Bump CACHE when you change any cached file, or the old copy will stick around.
  */
-const CACHE = 'award-compass-v1';
+const CACHE = 'award-compass-v2';
 
 const ASSETS = [
   './',

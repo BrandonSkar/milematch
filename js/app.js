@@ -93,6 +93,7 @@
     $('#roundTripInput').addEventListener('change', function () {
       $('#returnField').style.opacity = this.checked ? '1' : '.45';
       $('#returnInput').disabled = !this.checked;
+      refreshExternalLinks();
       persistSearchForm();
     });
 
@@ -100,8 +101,13 @@
       r.addEventListener('change', function () { applyFareSource(this.value); persistSearchForm(); });
     });
 
+    /* Every one of these feeds the Google Flights deep link, so the link has
+     * to be rebuilt on each — not just when the airport fields change. */
     ['#dateInput', '#returnInput', '#cabinInput', '#paxInput', '#cashInput'].forEach(function (sel) {
-      $(sel).addEventListener('change', persistSearchForm);
+      $(sel).addEventListener('change', function () {
+        refreshExternalLinks();
+        persistSearchForm();
+      });
     });
 
     form.addEventListener('submit', function (e) {
@@ -143,8 +149,26 @@
         hint.classList.remove('warn');
       }
     });
+    refreshExternalLinks();
+  }
+
+  /* Keeps the Google Flights link in step with the whole form. Called from
+   * every field that affects it, so the link can never go stale. */
+  function refreshExternalLinks() {
     var q = readForm();
-    if (q.from && q.to) $('#gfLink').href = PB.flights.googleFlightsUrl(q);
+    var link = $('#gfLink');
+    if (!link) return;
+
+    if (q.from && q.to) {
+      link.href = PB.flights.googleFlightsUrl(q);
+      link.removeAttribute('aria-disabled');
+      link.title = q.date
+        ? 'Search ' + q.from + ' → ' + q.to + ' on ' + q.date + (q.roundTrip && q.returnDate ? ', returning ' + q.returnDate : '')
+        : 'Pick a departure date for an exact search';
+    } else {
+      link.href = 'https://www.google.com/travel/flights';
+      link.title = 'Enter both airports for a direct search';
+    }
   }
 
   function readForm() {
