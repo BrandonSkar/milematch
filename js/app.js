@@ -372,7 +372,16 @@
     $('#offersWrap').hidden = false;
   }
 
-  var VERDICT_LABEL = { great: 'Excellent value', good: 'Good value', poor: 'Weak — consider cash', bad: 'Do not book', unknown: '—' };
+  /* Verdicts describe the VALUE of a hypothetical award, never its existence.
+   * "Excellent value" previously read like an offer on a real seat; it now says
+   * what it actually means — good rate IF a saver seat is open. */
+  var VERDICT_LABEL = {
+    great:   'Great rate if available',
+    good:    'Good rate if available',
+    poor:    'Weak — consider cash',
+    bad:     'Do not book',
+    unknown: '—'
+  };
 
   function renderResults(r, q) {
     var host = $('#results');
@@ -397,7 +406,14 @@
         'Every option below shows how far short you are — or try the <b>Cards</b> tab to see which welcome bonus would close the gap.</div>';
     }
 
-    html += '<h2 class="section-title">Redemption options <small>ranked by value per point, affordable first</small></h2>';
+    html += '<div class="availability-warning">' +
+      '<strong>These are chart prices, not available flights.</strong> ' +
+      'MileMatch has no award seat data — it shows what each program <em>would</em> charge if a saver ' +
+      'award is open on your dates. Many will not be. Check the airline before transferring anything.' +
+      '</div>';
+
+    html += '<h2 class="section-title">What each program would charge ' +
+            '<small>ranked by value per point, reachable first</small></h2>';
 
     if (!shown.length) {
       html += '<p class="empty">Nothing to show.</p>';
@@ -474,8 +490,37 @@
            (o.pool.paths.length ? ' (including everything transferable in)' : '') + '.</div></div>';
     }
 
+    /* Other ways into this program, so one suggested route never reads as the
+     * only route. */
+    if (o.sources && o.sources.total) {
+      var alsoHeld = (o.sources.held || []).filter(function (s) {
+        return !o.plan.steps.some(function (st) { return st.currency === s.currency; });
+      });
+      var bits = [];
+      if (alsoHeld.length) {
+        bits.push('You could also use ' + alsoHeld.map(function (s) {
+          return '<b>' + esc(s.name) + '</b>' + (s.ratio !== 1 ? ' (' + s.ratio + ':1)' : '');
+        }).join(', '));
+      }
+      if (o.sources.others.length) {
+        bits.push((bits.length ? 'Also transfers from ' : 'Transfers from ') +
+          o.sources.others.map(function (s) { return esc(s.name); }).join(', '));
+      }
+      if (bits.length) {
+        h += '<p class="alt-sources">' + bits.join('. ') + '.</p>';
+      }
+    } else if (o.pool && !o.pool.paths.length && !o.pool.direct) {
+      h += '<p class="alt-sources warn">No US credit card currency transfers to ' +
+           esc(o.program.short) + ' — miles must already be in the account.</p>';
+    }
+
     h += '<div class="option-links">';
-    h += '<span class="confidence">' + esc(o.source) + '</span>';
+    h += '<span class="confidence' + (o.chartVerified ? ' verified' : '') + '" title="' +
+         (o.chartVerified
+           ? 'Checked against a published chart on ' + esc(o.verifiedOn || '')
+           : 'Approximate — not yet checked against a published source') + '">' +
+         esc(o.source) + (o.chartVerified ? ' · verified ' + esc(o.verifiedOn || '') : ' · unverified') +
+         '</span>';
     PB.flights.awardSearchLinks(q, o.programId).forEach(function (l) {
       h += '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.name) + ' ↗</a>';
     });

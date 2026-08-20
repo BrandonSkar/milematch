@@ -57,6 +57,28 @@ window.PB = window.PB || {};
     return null;
   }
 
+  /* Zone pair first, then distance bands inside that pair — how Aeroplan and
+   * several other programs genuinely work. */
+  function lookupZoneDistance(programId, from, to, miles, cabin) {
+    var chart = PB.ZONE_DISTANCE_CHARTS[programId];
+    if (!chart) return null;
+    var bands = chart.zones[from.region + '-' + to.region] ||
+                chart.zones[to.region + '-' + from.region];
+    if (!bands) return null;
+    for (var i = 0; i < bands.length; i++) {
+      if (miles <= bands[i][0]) {
+        return {
+          miles: bands[i][1][cabin],
+          band: bands[i][0],
+          confidence: 'chart',
+          verifiedOn: chart.verifiedOn,
+          sourceUrl: chart.source
+        };
+      }
+    }
+    return null;
+  }
+
   function lookupRegion(programId, from, to, cabin) {
     var chart = PB.REGION_CHARTS[programId];
     if (!chart) return null;
@@ -103,7 +125,10 @@ window.PB = window.PB || {};
     var legs = ctx.roundTrip ? 2 : 1;
     var result = null;
 
-    if (prog.chart === 'distance') {
+    if (prog.chart === 'zoneDistance') {
+      result = lookupZoneDistance(programId, ctx.from, ctx.to, dist, ctx.cabin);
+      if (result) result.source = 'Zone + distance chart';
+    } else if (prog.chart === 'distance') {
       result = lookupDistance(programId, dist, ctx.cabin);
       if (result) result.source = 'Distance-based chart';
     } else if (prog.chart === 'region') {
@@ -152,6 +177,12 @@ window.PB = window.PB || {};
       taxes: PB.estimateTaxes(programId, dist, ctx.cabin, legs) * (ctx.passengers || 1),
       confidence: result.confidence,
       source: result.source,
+      /* Whether this program's chart has been checked against a published
+       * source, and when. Anything false is a from-memory approximation and
+       * the UI says so. */
+      chartVerified: !!prog.chartVerified,
+      verifiedOn: result.verifiedOn || null,
+      sourceUrl: result.sourceUrl || null,
       roundTripChart: !!result.roundTripChart,
       note: result.note || prog.note || ''
     };
@@ -198,6 +229,32 @@ window.PB = window.PB || {};
     paths.sort(function (a, b) { return b.yields - a.yields; });
 
     return { direct: direct, transferable: fromTransfers, total: direct + fromTransfers, paths: paths };
+  };
+
+  /**
+   * Every transferable currency that can feed this program, whether or not you
+   * hold any. The plan below picks one route; this is what else would work, so
+   * the app never implies Amex is the only way into Aeroplan when Chase,
+   * Capital One, Bilt and Wells Fargo all get there too.
+   */
+  PB.transferSources = function (programId, balances) {
+    var held = [], others = [];
+    Object.keys(PB.TRANSFERS).forEach(function (cur) {
+      var ratio = PB.TRANSFERS[cur][programId];
+      if (!ratio) return;
+      var bonus = bonusFor(cur, programId);
+      var entry = {
+        currency: cur,
+        name: PB.CURRENCIES[cur].short,
+        issuer: PB.CURRENCIES[cur].issuer,
+        ratio: ratio,
+        bonus: bonus,
+        have: balances[cur] || 0
+      };
+      (entry.have > 0 ? held : others).push(entry);
+    });
+    held.sort(function (a, b) { return b.have - a.have; });
+    return { held: held, others: others, total: held.length + others.length };
   };
 
   /**
@@ -304,12 +361,16 @@ window.PB = window.PB || {};
         verdict: verdict,
         confidence: priced.confidence,
         source: priced.source,
+        chartVerified: priced.chartVerified,
+        verifiedOn: priced.verifiedOn,
+        sourceUrl: priced.sourceUrl,
         note: priced.note,
         roundTripChart: priced.roundTripChart,
         affordable: plan.covered,
         shortfall: plan.shortfall,
         plan: plan,
         pool: plan.pool,
+        sources: PB.transferSources(pid, q.balances || {}),
         outOfPocket: priced.taxes,
         savings: q.cashPrice ? q.cashPrice - priced.taxes : null
       });

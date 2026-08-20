@@ -1,11 +1,11 @@
-/* Service worker.
+﻿/* Service worker.
  * Two jobs: make the app installable as a desktop app, and make it work
  * offline. Your balances live in localStorage, so an offline launch still
  * gives you the full points engine — only live fare lookups need the network.
  *
  * Bump CACHE when you change any cached file, or the old copy will stick around.
  */
-const CACHE = 'milematch-v2';
+const CACHE = 'milematch-v3';
 
 const ASSETS = [
   './',

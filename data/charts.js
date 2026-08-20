@@ -15,18 +15,45 @@
  */
 window.PB = window.PB || {};
 
-PB.DISTANCE_CHARTS = {
-  /* Air Canada Aeroplan — partner chart, one-way */
-  AC: [
-    [500,   { y: 6000,  w: 9000,  j: 20000,  f: 25000  }],
-    [1500,  { y: 10000, w: 15000, j: 25000,  f: 32000  }],
-    [2750,  { y: 15000, w: 22000, j: 35000,  f: 45000  }],
-    [4000,  { y: 25000, w: 37000, j: 55000,  f: 70000  }],
-    [6000,  { y: 35000, w: 50000, j: 60000,  f: 90000  }],
-    [8000,  { y: 40000, w: 58000, j: 75000,  f: 105000 }],
-    [99999, { y: 45000, w: 65000, j: 90000,  f: 140000 }]
-  ],
+/* ---------------------------------------------------------------------------
+ * ZONE + DISTANCE charts.
+ *
+ * Aeroplan does NOT price on distance alone. It picks the zone pair first,
+ * then applies distance bands *within* that pair. Modelling it as one global
+ * distance table (which this file did until 2026-08-20) produced errors of
+ * -33% to +40%: domestic came out far too expensive and transatlantic far too
+ * cheap. SFO-FRA business read 60,000 when the real price is 75,000 — enough
+ * to strand a transfer 15,000 points short.
+ *
+ * Keys are zone pairs, matched in either direction, each holding its own
+ * ordered distance bands.
+ * ------------------------------------------------------------------------- */
+PB.ZONE_DISTANCE_CHARTS = {
+  /* Air Canada Aeroplan — partner chart, one-way.
+   * Verified 2026-08-20 against the published chart (post 1 Jun 2026 revision).
+   * Premium economy and first are interpolated where the chart does not
+   * publish a distinct figure — flagged 'partial' below. */
+  AC: {
+    verifiedOn: '2026-08-20',
+    source: 'https://awardtravelfinder.com/award-charts/aeroplan',
+    zones: {
+      'NA-NA': [
+        [500,   { y: 6000,  w: 9000,  j: 15000, f: 20000 }],
+        [1500,  { y: 10000, w: 15000, j: 20000, f: 27000 }],
+        [2750,  { y: 12500, w: 19000, j: 25000, f: 34000 }],
+        [99999, { y: 22500, w: 30000, j: 35000, f: 47000 }]
+      ],
+      'NA-EU': [
+        [4000,  { y: 32500, w: 45000, j: 60000,  f: 85000  }],
+        [6000,  { y: 42500, w: 58000, j: 75000,  f: 105000 }],
+        [8000,  { y: 60000, w: 75000, j: 90000,  f: 125000 }],
+        [99999, { y: 75000, w: 92000, j: 110000, f: 150000 }]
+      ]
+    }
+  }
+};
 
+PB.DISTANCE_CHARTS = {
   /* Avios (British Airways) — per one-way segment */
   BA: [
     [650,   { y: 6500,  w: 9750,  j: 13000, f: 19500  }],

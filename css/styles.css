@@ -264,6 +264,23 @@ textarea { min-height: 110px; font-family: var(--mono); font-size: .82rem; resiz
 .plan-arrow { color: var(--text-faint); }
 .plan-bonus { color: var(--great); font-weight: 600; }
 
+.availability-warning {
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  padding: .75rem .95rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: .84rem; margin: 1.2rem 0 .4rem; line-height: 1.45;
+}
+
+.alt-sources {
+  font-size: .78rem; color: var(--text-dim);
+  margin: .55rem 0 0; padding-top: .5rem;
+  border-top: 1px dashed var(--line-soft);
+}
+.alt-sources.warn { color: var(--warn); border-top-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.alt-sources b { color: var(--text); font-weight: 600; }
+
+.confidence.verified { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); border-style: solid; }
+
 .option-note { font-size: .78rem; color: var(--text-dim); margin: .5rem 0 0; font-style: italic; }
 .option-links { display: flex; gap: .8rem; flex-wrap: wrap; margin-top: .6rem; font-size: .8rem; }
 

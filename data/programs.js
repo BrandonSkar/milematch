@@ -40,9 +40,9 @@ PB.CURRENCIES = {
 PB.PROGRAMS = {
   AC: {
     name: 'Air Canada Aeroplan', short: 'Aeroplan', alliance: 'Star',
-    chart: 'distance', surcharge: 'low', baseline: 1.5,
+    chart: 'zoneDistance', surcharge: 'low', baseline: 1.5, chartVerified: true,
     verify: 'https://www.aircanada.com/aeroplan',
-    note: 'Distance-based partner chart. No fuel surcharges on most Star partners, but Lufthansa/Austrian/Swiss pass some through.'
+    note: 'Zone pair first, then distance bands within it. No fuel surcharges on most Star partners, but Lufthansa/Austrian/Swiss pass some through.'
   },
   UA: {
     name: 'United MileagePlus', short: 'United', alliance: 'Star',
@@ -144,7 +144,7 @@ PB.PROGRAMS = {
     name: 'SAS EuroBonus', short: 'SAS', alliance: 'SkyTeam',
     chart: 'region', surcharge: 'low', baseline: 1.4,
     verify: 'https://www.flysas.com',
-    note: 'Moved from Star Alliance to SkyTeam.'
+    note: 'Moved from Star Alliance to SkyTeam. NO US credit card currency transfers to EuroBonus — you can only use miles already in the account. Amex is not a partner despite what other tools sometimes claim.'
   },
   QF: {
     name: 'Qantas Frequent Flyer', short: 'Qantas', alliance: 'oneworld',
@@ -178,14 +178,57 @@ PB.PROGRAMS = {
  *
  * bonuses: add a live transfer bonus here and the engine picks it up
  * automatically, e.g.  PB.TRANSFER_BONUSES.MR = { VS: 0.30 }  for +30%.
+ *
+ * VERIFIED against published issuer partner lists — see PB.TRANSFER_SOURCES.
+ *
+ * Rule when sources disagree: OMIT THE TRANSFER.
+ * A missing option costs you an idea. A phantom option sends you to move
+ * points into a program that cannot receive them, and transfers are
+ * irreversible. Amex->SAS, Chase->Emirates, Bilt->Singapore and Wells
+ * Fargo->Air Canada were all phantom rows in earlier versions of this file.
+ *
+ * Programs the app does not model yet (Aer Lingus, EVA, Finnair, TAP, Thai,
+ * Spirit, Virgin Red, JAL) are simply absent rather than wrong.
  * ------------------------------------------------------------------------- */
 PB.TRANSFERS = {
-  UR:   { AC: 1, UA: 1, VS: 1, AF: 1, BA: 1, IB: 1, EK: 1, SQ: 1, B6: 1, WN: 1 },
-  MR:   { AC: 1, DL: 1, VS: 1, AV: 1, AF: 1, BA: 1, IB: 1, EK: 1, EY: 1, SQ: 1, CX: 1, NH: 1, SK: 1, AM: 1, B6: 0.8 },
-  C1:   { AC: 1, VS: 1, AV: 1, TK: 1, AF: 1, BA: 1, IB: 1, QR: 1, EK: 1, EY: 1, SQ: 1, CX: 1, SK: 1, QF: 1, AM: 1, B6: 1, WN: 1 },
-  TYP:  { VS: 1, AV: 1, TK: 1, AF: 1, QR: 1, EK: 1, EY: 1, SQ: 1, CX: 1, SK: 1, QF: 1, AM: 1, B6: 1 },
-  BILT: { AC: 1, AA: 1, AS: 1, VS: 1, AV: 1, TK: 1, AF: 1, BA: 1, IB: 1, EK: 1, EY: 1, SQ: 1, CX: 1, QF: 1, AM: 1, WN: 1 },
-  WF:   { AC: 1, VS: 1, AV: 1, AF: 1, BA: 1, IB: 1, SQ: 1, B6: 1 }
+  // Chase: 10 airline partners, all 1:1. No Emirates, no American.
+  UR:   { AC: 1, AF: 1, BA: 1, IB: 1, SQ: 1, UA: 1, VS: 1, B6: 1, WN: 1 },
+
+  // Amex: 17 airline partners. Etihad transfers ended 30 Jun 2026 and sources
+  // disagree on whether it fully closed, so it is omitted per the rule above.
+  MR:   { AC: 1, AF: 1, AM: 1.6, AV: 1, BA: 1, CX: 0.8, DL: 1, EK: 0.8,
+          IB: 1, NH: 1, QF: 1, QR: 1, SQ: 1, VS: 1, B6: 0.8 },
+
+  // Capital One: 18 airline partners. No Iberia, no Virgin Atlantic,
+  // no Southwest, no American, no United.
+  C1:   { AC: 1, AF: 1, AM: 1, AV: 1, BA: 1, CX: 1, EK: 0.75, EY: 1,
+          QF: 1, QR: 1, SQ: 1, TK: 1, B6: 0.6 },
+
+  // Citi: 15 airline partners. American IS a partner (two independent
+  // sources). Aeromexico was removed 25 Jan 2026.
+  TYP:  { AA: 1, AF: 1, AV: 1, CX: 1, EK: 0.8, EY: 1, QF: 1, QR: 1,
+          SQ: 1, TK: 1, VS: 1, B6: 1 },
+
+  // Bilt: 19 airline partners, all 1:1. The only major currency that
+  // reaches both American and Alaska.
+  BILT: { AA: 1, AC: 1, AF: 1, AS: 1, AV: 1, BA: 1, CX: 1, EK: 1, EY: 1,
+          IB: 1, QR: 1, TK: 1, UA: 1, VS: 1, WN: 1 },
+
+  // Wells Fargo: 8 airline partners, all 1:1. Cathay added Apr 2026,
+  // JetBlue added Nov 2025.
+  WF:   { AF: 1, AV: 1, BA: 1, CX: 1, IB: 1, VS: 1, B6: 1 }
+};
+
+/* Provenance, surfaced in the app so you can judge how stale a row is.
+ * `count` is the issuer's full airline partner count; the table above lists
+ * only those MileMatch models, so it will be smaller. */
+PB.TRANSFER_SOURCES = {
+  UR:   { verifiedOn: '2026-08-20', count: 10, url: 'https://awardtravelfinder.com/credit-card-transfers/chase-ultimate-rewards' },
+  MR:   { verifiedOn: '2026-08-20', count: 17, url: 'https://upgradedpoints.com/credit-cards/amex-membership-rewards-transfer-partners/' },
+  C1:   { verifiedOn: '2026-08-20', count: 18, url: 'https://awardtravelfinder.com/credit-card-transfers/capital-one-miles' },
+  TYP:  { verifiedOn: '2026-08-20', count: 15, url: 'https://frequentmiler.com/citi-thankyou-rewards-airline-and-hotel-transfer-partners/' },
+  BILT: { verifiedOn: '2026-08-20', count: 19, url: 'https://awardtravelfinder.com/credit-card-transfers/bilt-rewards' },
+  WF:   { verifiedOn: '2026-08-20', count: 8,  url: 'https://awardtravelfinder.com/credit-card-transfers/wells-fargo-autograph' }
 };
 
 /* Live transfer bonuses. Value is a fraction: 0.30 = +30% bonus miles.

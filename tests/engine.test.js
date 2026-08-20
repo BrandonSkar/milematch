@@ -49,14 +49,37 @@ test('great-circle distances are accurate to within 1%', () => {
 
 /* ── Chart lookups ─────────────────────────────────────────── */
 
-test('distance chart picks the right band', () => {
-  // JFK-LHR is ~3,450 mi, which lands in Aeroplan's 2,751-4,000 band.
-  const p = PB.priceAward('AC', {
-    from: PB.airports.JFK, to: PB.airports.LHR,
-    distance: 3450, cabin: 'j', roundTrip: false, passengers: 1
+/* Aeroplan prices by zone pair FIRST, then distance within it. Modelling it as
+ * one global distance table produced -33% to +40% errors. These pin the real
+ * published values so that regression cannot come back. */
+test('Aeroplan uses zone pair then distance, matching the published chart', () => {
+  const cases = [
+    ['SEA', 'ORD', 'y', 12500], ['SEA', 'ORD', 'j', 25000],  // NA-NA 1,501-2,750 (1,716 mi)
+    ['JFK', 'LAX', 'y', 12500], ['JFK', 'LAX', 'j', 25000],  // NA-NA 1,501-2,750 (2,470 mi)
+    ['HNL', 'JFK', 'y', 22500], ['HNL', 'JFK', 'j', 35000],  // NA-NA 2,751+     (4,975 mi)
+    ['JFK', 'LHR', 'y', 32500], ['JFK', 'LHR', 'j', 60000],  // NA-EU 0-4,000    (3,443 mi)
+    ['SFO', 'FRA', 'y', 42500], ['SFO', 'FRA', 'j', 75000]   // NA-EU 4,001-6,000 (5,685 mi)
+  ];
+  cases.forEach(([a, b, cabin, expected]) => {
+    const from = PB.airports[a], to = PB.airports[b];
+    const p = PB.priceAward('AC', {
+      from, to, distance: PB.distance(from, to),
+      cabin, roundTrip: false, passengers: 1
+    });
+    assert.strictEqual(p.miles, expected, `${a}-${b} ${cabin}`);
+    assert.strictEqual(p.confidence, 'chart');
+    assert.ok(p.chartVerified, 'Aeroplan chart should be marked verified');
   });
-  assert.strictEqual(p.miles, 55000);
-  assert.strictEqual(p.confidence, 'chart');
+});
+
+test('a domestic hop is not priced with a transatlantic band', () => {
+  // The old global-distance model charged 35,000 for SEA-ORD business by
+  // reaching into a long-haul band. Zone-aware pricing must not.
+  const p = PB.priceAward('AC', {
+    from: PB.airports.SEA, to: PB.airports.ORD,
+    distance: 1716, cabin: 'j', roundTrip: false, passengers: 1
+  });
+  assert.ok(p.miles < 30000, `domestic business should be well under 30k, got ${p.miles}`);
 });
 
 test('Avios aliases resolve to the shared BA band table', () => {
@@ -165,6 +188,73 @@ test('reachable() sums direct miles plus everything transferable in', () => {
 test('non-1:1 ratios are applied (Amex -> JetBlue is 1000:800)', () => {
   const r = PB.reachable('B6', { MR: 10000 });
   assert.strictEqual(r.total, 8000);
+});
+
+/* ── Transfer partner integrity ────────────────────────────── */
+
+/* These pin the exact partnerships a user reported as wrong. A phantom
+ * transfer is the worst failure this app can produce: it sends you to move
+ * points irreversibly into a program that cannot receive them. */
+test('phantom transfers stay dead', () => {
+  const phantom = [
+    ['MR', 'SK', 'Amex does not transfer to SAS EuroBonus'],
+    ['UR', 'EK', 'Chase has never partnered with Emirates'],
+    ['BILT', 'SQ', 'Bilt does not transfer to Singapore'],
+    ['BILT', 'QF', 'Bilt does not transfer to Qantas'],
+    ['BILT', 'AM', 'Bilt does not transfer to Aeromexico'],
+    ['WF', 'AC', 'Wells Fargo does not transfer to Aeroplan'],
+    ['WF', 'SQ', 'Wells Fargo does not transfer to Singapore'],
+    ['C1', 'VS', 'Capital One does not transfer to Virgin Atlantic'],
+    ['C1', 'IB', 'Capital One does not transfer to Iberia'],
+    ['TYP', 'AM', 'Citi removed Aeromexico in Jan 2026'],
+    ['TYP', 'AC', 'Citi does not transfer to Aeroplan'],
+    ['UR', 'AA', 'Chase does not transfer to American']
+  ];
+  phantom.forEach(([cur, prog, why]) => {
+    assert.ok(!PB.TRANSFERS[cur][prog], `${cur} -> ${prog}: ${why}`);
+  });
+});
+
+test('real partnerships that are easy to doubt are present', () => {
+  const real = [
+    ['BILT', 'AA', 'Bilt genuinely does reach AAdvantage'],
+    ['BILT', 'AS', 'Bilt is the only major currency with Alaska at 1:1'],
+    ['BILT', 'UA', 'Bilt reaches United'],
+    ['TYP', 'AA', 'Citi ThankYou reaches AAdvantage'],
+    ['MR', 'NH', 'Amex is the only US route into ANA'],
+    ['WF', 'CX', 'Wells Fargo added Cathay in Apr 2026']
+  ];
+  real.forEach(([cur, prog, why]) => {
+    assert.ok(PB.TRANSFERS[cur][prog], `${cur} -> ${prog} missing: ${why}`);
+  });
+});
+
+test('SAS is unreachable from every card currency', () => {
+  const r = PB.reachable('SK', { UR: 1e6, MR: 1e6, C1: 1e6, TYP: 1e6, BILT: 1e6, WF: 1e6 });
+  assert.strictEqual(r.transferable, 0, 'no US currency transfers to EuroBonus');
+  assert.strictEqual(r.paths.length, 0);
+});
+
+test('every currency carries a verification source', () => {
+  Object.keys(PB.TRANSFERS).forEach((cur) => {
+    const src = PB.TRANSFER_SOURCES[cur];
+    assert.ok(src, `${cur} has no provenance entry`);
+    assert.match(src.verifiedOn, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(/^https:\/\//.test(src.url));
+    // The table can only be a subset of the issuer's real partner list.
+    assert.ok(Object.keys(PB.TRANSFERS[cur]).length <= src.count,
+      `${cur} lists more partners than the issuer actually has`);
+  });
+});
+
+test('transferSources reports every route into a program', () => {
+  // Aeroplan is reachable from Chase, Amex, Capital One and Bilt.
+  const s = PB.transferSources('AC', { MR: 60000 });
+  assert.strictEqual(s.total, 4);
+  // Spread into host-realm arrays — objects built inside the vm carry that
+  // realm's Array prototype, which deepStrictEqual rejects.
+  assert.deepStrictEqual([...s.held.map((h) => h.currency)], ['MR']);
+  assert.deepStrictEqual([...s.others.map((o) => o.currency)].sort(), ['BILT', 'C1', 'UR']);
 });
 
 test('transfer bonuses increase the yield', () => {
@@ -430,7 +520,8 @@ test('every transfer target names a real program', () => {
 test('every program has a usable pricing model', () => {
   Object.keys(PB.PROGRAMS).forEach((id) => {
     const p = PB.PROGRAMS[id];
-    assert.ok(['distance', 'region', 'dynamic', 'fixed'].includes(p.chart), `${id} has no chart type`);
+    assert.ok(['zoneDistance', 'distance', 'region', 'dynamic', 'fixed'].includes(p.chart), `${id} has no chart type`);
+    if (p.chart === 'zoneDistance') assert.ok(PB.ZONE_DISTANCE_CHARTS[id], `${id} declares a zone+distance chart but none exists`);
     if (p.chart === 'distance') assert.ok(PB.DISTANCE_CHARTS[id], `${id} declares a distance chart but none exists`);
     if (p.chart === 'region') assert.ok(PB.REGION_CHARTS[id], `${id} declares a region chart but none exists`);
     if (p.chart === 'dynamic') assert.ok(p.dynamicCpp > 0, `${id} needs dynamicCpp`);
