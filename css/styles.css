@@ -134,6 +134,13 @@ textarea { min-height: 110px; font-family: var(--mono); font-size: .82rem; resiz
   .tabs { top: 56px; }
 }
 
+/* Airport codes display uppercase without the JS rewriting what you typed. */
+#fromInput, #toInput {
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-family: var(--mono);
+}
+
 .swap {
   background: var(--bg-elev-2); border: 1px solid var(--line); color: var(--text-dim);
   border-radius: 50%; width: 34px; height: 34px; cursor: pointer; margin-bottom: .1rem;

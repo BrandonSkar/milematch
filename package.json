@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/engine.test.js",
+    "test:browser": "node --test tests/browser.test.js",
+    "test:all": "node --test tests/engine.test.js tests/browser.test.js",
     "serve": "node serve.js 8080"
   },
   "keywords": ["points", "miles", "award-travel", "pwa"],

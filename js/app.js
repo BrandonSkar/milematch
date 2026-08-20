@@ -82,11 +82,66 @@
       persistSearchForm();
     });
 
+    /* Airport code fields.
+     *
+     * Do NOT rewrite `this.value` on every keystroke. Uppercasing and
+     * truncating in the input handler silently discarded any character typed
+     * into an already-full field and yanked the caret to the end, which made
+     * the field look frozen once a code was in it. `maxlength="3"` plus a CSS
+     * text-transform gets the same result natively, with correct caret and
+     * selection behaviour. readForm() uppercases the value for the engine. */
     ['#fromInput', '#toInput'].forEach(function (sel) {
-      $(sel).addEventListener('input', function () {
-        this.value = this.value.toUpperCase().slice(0, 3);
+      var el = $(sel);
+
+      el.addEventListener('input', function () {
         updateAirportHints();
         persistSearchForm();
+      });
+
+      /* Normalise to uppercase once editing is done, so what's stored and
+       * restored matches what's displayed. */
+      el.addEventListener('change', function () {
+        this.value = this.value.toUpperCase();
+        updateAirportHints();
+        persistSearchForm();
+      });
+
+      /* A three-letter code field must never feel stuck. The FIRST printable
+       * keystroke after arriving in a full field replaces the whole code
+       * instead of being silently dropped by maxlength — that's what makes a
+       * restored "SEA" retypable as "SFO".
+       *
+       * Only the first one, though: within a typing burst, maxlength should
+       * truncate normally so "seattle" still yields SEA rather than rolling
+       * over to the last three characters. Backspace and modifier combos are
+       * untouched, so partial edits keep working. */
+      var replaceOnNextKey = false;
+
+      el.addEventListener('keydown', function (e) {
+        if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (replaceOnNextKey && this.value.length >= 3 &&
+            this.selectionStart === this.selectionEnd) {
+          this.select();
+        }
+        replaceOnNextKey = false;
+      });
+
+      /* Select the existing code on focus so typing replaces it — the field
+       * is three characters, nobody wants to edit it in place. */
+      var selectOnRelease = false;
+      el.addEventListener('mousedown', function () {
+        selectOnRelease = document.activeElement !== this;
+      });
+      el.addEventListener('mouseup', function (e) {
+        if (!selectOnRelease) return;
+        selectOnRelease = false;
+        e.preventDefault();   // stop the click from collapsing the selection
+        this.select();
+        replaceOnNextKey = true;
+      });
+      el.addEventListener('focus', function () {
+        this.select();
+        replaceOnNextKey = true;
       });
     });
 

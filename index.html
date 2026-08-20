@@ -46,7 +46,8 @@
     <div class="grid grid-route">
       <label class="field">
         <span>From</span>
-        <input id="fromInput" list="airportList" placeholder="SFO" autocomplete="off" required>
+        <input id="fromInput" list="airportList" placeholder="SFO" maxlength="3"
+               autocomplete="off" autocapitalize="characters" spellcheck="false" required>
         <small id="fromHint" class="hint"></small>
       </label>
 
@@ -54,7 +55,8 @@
 
       <label class="field">
         <span>To</span>
-        <input id="toInput" list="airportList" placeholder="NRT" autocomplete="off" required>
+        <input id="toInput" list="airportList" placeholder="NRT" maxlength="3"
+               autocomplete="off" autocapitalize="characters" spellcheck="false" required>
         <small id="toHint" class="hint"></small>
       </label>
     </div>
