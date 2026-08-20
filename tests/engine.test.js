@@ -324,11 +324,23 @@ function decodeTfs(url) {
     return out;
   };
 
+  /* Airport is { type = 1 (varint), code = 2 (string) }. Getting these two
+   * the wrong way round still produces a URL that Google accepts — it reads
+   * the dates and silently drops the route — so the tests below assert on the
+   * field numbers directly, not just on the decoded code. */
+  const airport = (msg) => {
+    const type = msg.find((p) => p.field === 1);
+    const code = msg.find((p) => p.field === 2);
+    assert.ok(type && typeof type.value === 'number', 'Airport field 1 must be the varint type');
+    assert.ok(code && typeof code.value === 'string', 'Airport field 2 must be the IATA code');
+    return code.value;
+  };
+
   const top = read(buf);
   const legs = top.filter((f) => f.field === 3).map((leg) => ({
     date: leg.nested.find((p) => p.field === 2).value,
-    from: leg.nested.find((p) => p.field === 13).nested.find((p) => p.field === 1).value,
-    to:   leg.nested.find((p) => p.field === 14).nested.find((p) => p.field === 1).value
+    from: airport(leg.nested.find((p) => p.field === 13).nested),
+    to:   airport(leg.nested.find((p) => p.field === 14).nested)
   }));
 
   return {

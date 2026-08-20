@@ -134,7 +134,11 @@ window.PB = window.PB || {};
    *               int32 seat = 9; int32 trip = 19; }
    *   FlightData{ string date = 2; repeated Airport from = 13;
    *               repeated Airport to = 14; }
-   *   Airport   { string code = 1; int32 type = 2; }
+   *   Airport   { int32 type = 1; string code = 2; }
+   *
+   * Field order inside Airport matters and is easy to get backwards: type is
+   * field 1, the IATA code is field 2. Reversed, Google still reads the dates
+   * and silently drops the route, leaving the origin/destination boxes empty.
    *
    * If Google ever changes this, swap the call in googleFlightsUrl() to
    * googleFlightsSearchUrl() and the app keeps working.
@@ -163,7 +167,7 @@ window.PB = window.PB || {};
   function varintField(field, n) { return tag(field, 0).concat(varint(n)); }
 
   function airportMsg(code) {
-    return stringField(1, code).concat(varintField(2, 0));
+    return varintField(1, 1).concat(stringField(2, code));  // type 1 = airport
   }
 
   function legMsg(from, to, date) {
