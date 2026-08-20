@@ -78,7 +78,7 @@ PB.PROGRAMS = {
     name: 'Avianca LifeMiles', short: 'LifeMiles', alliance: 'Star',
     chart: 'region', surcharge: 'none', baseline: 1.5,
     verify: 'https://www.lifemiles.com',
-    note: 'No fuel surcharges on any partner — often the cheapest all-in way to fly Star Alliance business.'
+    note: 'No fuel surcharges on any partner — often the cheapest all-in way to fly Star Alliance business. LifeMiles now prices in ranges rather than fixed cells; figures here are the saver end, so expect to be quoted more.'
   },
   TK: {
     name: 'Turkish Miles&Smiles', short: 'Turkish', alliance: 'Star',
@@ -136,9 +136,9 @@ PB.PROGRAMS = {
   },
   NH: {
     name: 'ANA Mileage Club', short: 'ANA', alliance: 'Star',
-    chart: 'region', roundTripOnly: true, surcharge: 'medium', baseline: 1.8,
+    chart: 'region', roundTripOnly: true, surcharge: 'medium', baseline: 1.8, chartVerified: true,
     verify: 'https://www.ana.co.jp',
-    note: 'ROUND TRIP ONLY on partner awards, but the rates are among the best anywhere. Amex is the only US transfer partner and transfers are slow (up to 3 days).'
+    note: 'ROUND TRIP ONLY on partner awards. Note ANA has devalued — business to Japan is 110,000 round trip, not the 85,000 still widely quoted. Amex is the only US transfer partner and transfers can take up to 3 days.'
   },
   SK: {
     name: 'SAS EuroBonus', short: 'SAS', alliance: 'SkyTeam',

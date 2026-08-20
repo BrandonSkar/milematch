@@ -110,9 +110,12 @@ test('ANA round-trip-only chart is NOT doubled again', () => {
   const base = { from: PB.airports.SFO, to: PB.airports.NRT, distance: 5130, cabin: 'j', passengers: 1 };
   const ow = PB.priceAward('NH', { ...base, roundTrip: false });
   const rt = PB.priceAward('NH', { ...base, roundTrip: true });
-  assert.strictEqual(rt.miles, 85000);
-  assert.strictEqual(ow.miles, 85000, 'ANA partner awards are round trip either way');
+  // 110,000 is the current verified partner rate. The 85,000 figure still
+  // quoted all over the internet is the pre-devaluation chart.
+  assert.strictEqual(rt.miles, 110000);
+  assert.strictEqual(ow.miles, 110000, 'ANA partner awards are round trip either way');
   assert.ok(rt.roundTripChart);
+  assert.ok(rt.chartVerified);
 });
 
 test('passenger count scales the mileage', () => {

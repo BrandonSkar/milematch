@@ -137,20 +137,30 @@ PB.REGION_CHARTS = {
     'EU-NEA':  { y: 25000, w: 35000, j: 47500, f: 70000  }
   },
 
-  /* Avianca LifeMiles — Star Alliance partners, one-way, NO fuel surcharges */
+  /* Avianca LifeMiles — Star Alliance partners, one-way, NO fuel surcharges.
+   * Checked 2026-08-20 but deliberately NOT marked verified: LifeMiles has
+   * moved partly dynamic and now publishes RANGES rather than fixed cells.
+   * Values below are the low (saver) end of the published range — you will
+   * frequently be quoted the high end. Ranges, for reference:
+   *   NA-EU   econ 35-45k   business 63-80k    first 100-120k
+   *   NA-NEA  econ 40-47k   business 85-90k    first 110-120k
+   *   NA-SEA  econ 42-50k   business 90-100k   first 120-130k
+   *   NA-SA   econ 25-35k   business 50-65k
+   *   NA-OC   econ 45-55k   business 90-100k
+   *   NA-ME/AF econ 42-55k  business 78-90k */
   AV: {
-    'NA-NA':   { y: 7500,  w: 12000, j: 20000, f: 25000  },
+    'NA-NA':   { y: 10000, w: 15000, j: 20000, f: 27500  },
     'NA-CAM':  { y: 10000, w: 15000, j: 25000, f: 32000  },
-    'NA-SA':   { y: 20000, w: 28000, j: 43000, f: 55000  },
-    'NA-EU':   { y: 30000, w: 42000, j: 63000, f: 87000  },
-    'NA-ME':   { y: 40000, w: 55000, j: 78000, f: 105000 },
+    'NA-SA':   { y: 25000, w: 35000, j: 50000, f: 65000  },
+    'NA-EU':   { y: 35000, w: 48000, j: 63000, f: 100000 },
+    'NA-ME':   { y: 42000, w: 57000, j: 78000, f: 105000 },
     'NA-AF':   { y: 42000, w: 58000, j: 78000, f: 105000 },
-    'NA-SAS':  { y: 40000, w: 55000, j: 78000, f: 105000 },
-    'NA-NEA':  { y: 35000, w: 48000, j: 72500, f: 90000  },
-    'NA-SEA':  { y: 40000, w: 55000, j: 78000, f: 105000 },
-    'NA-OC':   { y: 40000, w: 55000, j: 80000, f: 110000 },
+    'NA-SAS':  { y: 42000, w: 57000, j: 80000, f: 108000 },
+    'NA-NEA':  { y: 40000, w: 55000, j: 85000, f: 110000 },
+    'NA-SEA':  { y: 42000, w: 58000, j: 90000, f: 120000 },
+    'NA-OC':   { y: 45000, w: 60000, j: 90000, f: 120000 },
     'EU-EU':   { y: 8000,  w: 12000, j: 20000, f: 30000  },
-    'EU-NEA':  { y: 30000, w: 42000, j: 63000, f: 87000  },
+    'EU-NEA':  { y: 35000, w: 48000, j: 63000, f: 90000  },
     'EU-SA':   { y: 32000, w: 45000, j: 65000, f: 90000  }
   },
 
@@ -190,15 +200,20 @@ PB.REGION_CHARTS = {
     'EU-SEA':  { y: 38000, w: 52000, j: 82000, f: 110000 }
   },
 
-  /* ANA Mileage Club — partner chart. ROUND TRIP prices (see roundTripOnly). */
+  /* ANA Mileage Club — Star Alliance partner chart. ROUND TRIP prices.
+   * Verified 2026-08-20. ANA has devalued materially: the widely-quoted
+   * "85,000 business to Japan" is the OLD chart — it is now 110,000.
+   * Premium economy is not published on the partner chart and is interpolated.
+   * NEA here uses ANA's Japan (Zone 1-A) figures; Korea/China price higher. */
   NH: {
-    'NA-NEA':  { y: 40000, w: 60000, j: 85000,  f: 150000 },
-    'NA-EU':   { y: 55000, w: 75000, j: 88000,  f: 165000 },
-    'NA-SEA':  { y: 50000, w: 70000, j: 100000, f: 160000 },
-    'NA-OC':   { y: 50000, w: 70000, j: 100000, f: 160000 },
-    'NA-NA':   { y: 25000, w: 35000, j: 50000,  f: 70000  },
-    'EU-NEA':  { y: 45000, w: 60000, j: 88000,  f: 150000 },
-    'NEA-SEA': { y: 30000, w: 40000, j: 55000,  f: 80000  }
+    'NA-NEA':  { y: 50000, w: 70000,  j: 110000, f: 170000 },
+    'NA-EU':   { y: 55000, w: 75000,  j: 100000, f: 165000 },
+    'NA-SEA':  { y: 80000, w: 105000, j: 136000, f: 240000 },
+    'NA-OC':   { y: 75000, w: 100000, j: 145000, f: 246000 },
+    'NA-NA':   { y: 30000, w: 40000,  j: 55000,  f: 90000  },
+    'EU-NEA':  { y: 60000, w: 82000,  j: 118000, f: 200000 },
+    'EU-SEA':  { y: 59000, w: 78000,  j: 94000,  f: 177000 },
+    'NEA-SEA': { y: 30000, w: 40000,  j: 55000,  f: 80000  }   // not published; estimate
   },
 
   /* SAS EuroBonus — one-way */
