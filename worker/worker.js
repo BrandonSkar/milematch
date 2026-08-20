@@ -1,4 +1,4 @@
-/* Award Compass fare proxy — Cloudflare Worker (free tier: 100k requests/day).
+/* MileMatch fare proxy — Cloudflare Worker (free tier: 100k requests/day).
  *
  * Why this exists: a static GitHub Pages site cannot call Amadeus directly.
  * The browser blocks it on CORS, and an API key shipped in front-end JavaScript

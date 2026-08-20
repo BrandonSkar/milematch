@@ -44,7 +44,7 @@ npx wrangler secret put AMADEUS_CLIENT_SECRET   # paste your API Secret
 npx wrangler deploy
 ```
 
-Wrangler prints a URL like `https://award-compass.yourname.workers.dev`.
+Wrangler prints a URL like `https://milematch.yourname.workers.dev`.
 
 ### 3. Point the app at it
 

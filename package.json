@@ -1,5 +1,5 @@
 {
-  "name": "award-compass",
+  "name": "milematch",
   "version": "1.0.0",
   "description": "Points and miles flight optimizer. Static PWA, no build step, no backend.",
   "private": true,

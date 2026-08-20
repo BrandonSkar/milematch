@@ -1,6 +1,6 @@
 {
-  "name": "Award Compass — points & miles flight optimizer",
-  "short_name": "Award Compass",
+  "name": "MileMatch — points & miles flight optimizer",
+  "short_name": "MileMatch",
   "description": "Enter your points balances, model a credit card welcome bonus, and see which loyalty program books your flight for the fewest points.",
   "start_url": "./index.html",
   "scope": "./",

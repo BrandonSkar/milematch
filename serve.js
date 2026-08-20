@@ -48,6 +48,6 @@ http.createServer((req, res) => {
     fs.createReadStream(file).pipe(res);
   });
 }).listen(PORT, () => {
-  console.log(`Award Compass running at http://localhost:${PORT}`);
+  console.log(`MileMatch running at http://localhost:${PORT}`);
   console.log('Press Ctrl+C to stop.');
 });

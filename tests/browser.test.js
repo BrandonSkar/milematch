@@ -87,7 +87,7 @@ test.before(async () => {
   });
   await sleep(700);
 
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'awc-test-'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-test-'));
   chrome = spawn(CHROME, [
     '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
     `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, 'about:blank'

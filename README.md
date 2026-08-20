@@ -1,4 +1,4 @@
-# Award Compass
+# MileMatch
 
 A points-and-miles flight optimizer that runs entirely in your browser. Enter
 your balances, model a credit card welcome bonus, and see which loyalty program
@@ -45,20 +45,26 @@ off the filesystem with no server.
 For the service worker and install prompt to work you need real HTTP:
 
 ```bash
-npm run serve      # http://localhost:8080
-npm test           # 33 engine tests
+npm run serve        # http://localhost:8080
+npm test             # 41 engine tests (pure logic, no browser needed)
+npm run test:browser # 10 DOM tests, drives real Chrome over the DevTools Protocol
+npm run test:all     # both suites
 ```
+
+The browser suite skips itself if Chrome isn't installed. It exists because the
+engine tests can't see the DOM — an input handler that eats keystrokes or a link
+that goes stale will pass every unit test while the app is visibly broken.
 
 ## Publishing to GitHub Pages
 
 ```bash
-git remote add origin https://github.com/YOUR-USERNAME/award-compass.git
+git remote add origin https://github.com/YOUR-USERNAME/milematch.git
 git push -u origin main
 ```
 
 Then on GitHub: **Settings → Pages → Source: Deploy from a branch → `main` / `/ (root)`**.
 
-Your site appears at `https://YOUR-USERNAME.github.io/award-compass/` within a
+Your site appears at `https://YOUR-USERNAME.github.io/milematch/` within a
 minute or two. It must be a **public** repo — Pages on private repos requires a
 paid plan.
 
@@ -145,7 +151,8 @@ js/store.js             localStorage persistence
 js/app.js               UI controller
 data/*.js               the editable reference data
 worker/                 optional Cloudflare Worker for live fares
-tests/engine.test.js    33 tests over the engine
+tests/engine.test.js    41 tests over the pricing engine
+tests/browser.test.js   10 DOM interaction tests in real Chrome
 sw.js                   service worker (offline + installability)
 ```
 
