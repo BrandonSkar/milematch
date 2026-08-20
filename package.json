@@ -1,0 +1,12 @@
+{
+  "name": "award-compass",
+  "version": "1.0.0",
+  "description": "Points and miles flight optimizer. Static PWA, no build step, no backend.",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/engine.test.js",
+    "serve": "npx --yes serve . -l 8080"
+  },
+  "keywords": ["points", "miles", "award-travel", "pwa"],
+  "license": "MIT"
+}

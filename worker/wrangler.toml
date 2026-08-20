@@ -1,0 +1,17 @@
+name = "award-compass"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+# "test.api.amadeus.com" for the free sandbox (limited, partly cached data).
+# "api.amadeus.com" for real fares — still has a free monthly quota, but the
+# Amadeus dashboard requires a card on file before it will enable production.
+AMADEUS_HOST = "test.api.amadeus.com"
+
+# Lock this down to your Pages origin once you know it, e.g.
+# ALLOWED_ORIGIN = "https://yourname.github.io"
+ALLOWED_ORIGIN = "*"
+
+# Secrets are NOT set here. Run these once after `wrangler login`:
+#   npx wrangler secret put AMADEUS_CLIENT_ID
+#   npx wrangler secret put AMADEUS_CLIENT_SECRET
