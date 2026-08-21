@@ -105,11 +105,18 @@
       </label>
     </div>
 
-    <label class="field airline-field">
-      <span>Airlines <small>optional — leave empty for any</small></span>
-      <input id="airlineInput" placeholder="UA, AA, DL, F9…" autocomplete="off">
-      <small class="hint" id="airlineHint">Two-letter codes, comma separated.</small>
-    </label>
+    <div class="airline-field">
+      <div class="airline-head">
+        <span>Airlines <small>none selected = any airline</small></span>
+        <button type="button" id="clearAirlines" class="link-btn" hidden>Clear</button>
+      </div>
+      <div id="airlineChips" class="chips"></div>
+      <details class="airline-more">
+        <summary>Another airline not listed</summary>
+        <input id="airlineInput" placeholder="e.g. AY, LX, TP" autocomplete="off">
+        <small class="hint">Two-letter IATA codes, comma separated. Combines with the buttons above.</small>
+      </details>
+    </div>
 
     <p class="hint filters-note" id="filtersNote"></p>
 

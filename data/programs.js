@@ -257,6 +257,36 @@ PB.SURCHARGE_MODEL = {
   high:   { base: 75, perThousandMiles: 38, cabinMultiplier: { y: 1, w: 1.3, j: 1.9, f: 2.3 } }
 };
 
+/* ---------------------------------------------------------------------------
+ * Airlines offered as one-click filter chips.
+ *
+ * Deliberately a short curated list rather than every IATA code on earth —
+ * these are the carriers a US-based traveller actually ends up on. Anything
+ * missing can still be typed into the airline box by code.
+ *
+ * `group` drives the visual split in the UI.
+ * ------------------------------------------------------------------------- */
+PB.POPULAR_AIRLINES = [
+  { code: 'AA', name: 'American',        group: 'us' },
+  { code: 'UA', name: 'United',          group: 'us' },
+  { code: 'DL', name: 'Delta',           group: 'us' },
+  { code: 'AS', name: 'Alaska',          group: 'us' },
+  { code: 'B6', name: 'JetBlue',         group: 'us' },
+  { code: 'WN', name: 'Southwest',       group: 'us' },
+  { code: 'NK', name: 'Spirit',          group: 'us' },
+  { code: 'F9', name: 'Frontier',        group: 'us' },
+  { code: 'HA', name: 'Hawaiian',        group: 'us' },
+  { code: 'AC', name: 'Air Canada',      group: 'intl' },
+  { code: 'BA', name: 'British Airways', group: 'intl' },
+  { code: 'LH', name: 'Lufthansa',       group: 'intl' },
+  { code: 'AF', name: 'Air France',      group: 'intl' },
+  { code: 'VS', name: 'Virgin Atlantic', group: 'intl' },
+  { code: 'EK', name: 'Emirates',        group: 'intl' },
+  { code: 'QR', name: 'Qatar',           group: 'intl' },
+  { code: 'NH', name: 'ANA',             group: 'intl' },
+  { code: 'SQ', name: 'Singapore',       group: 'intl' }
+];
+
 PB.CABINS = {
   y: { name: 'Economy',         short: 'Econ' },
   w: { name: 'Premium Economy', short: 'Prem' },

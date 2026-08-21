@@ -6,6 +6,7 @@
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
   var state, lastResult = null, lastQuery = null, liveOffers = [], selectedOfferId = null;
+  var pickedAirlines = [];   // carrier codes toggled on via the chip buttons
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -169,6 +170,17 @@
       });
     });
 
+    buildAirlineChips();
+
+    $('#clearAirlines').addEventListener('click', function () {
+      pickedAirlines = [];
+      $('#airlineInput').value = '';
+      renderAirlineChips();
+      updateFiltersNote();
+      persistSearchForm();
+      if (liveOffers.length) applyOfferFilters();
+    });
+
     ['#nonStopInput', '#carryOnInput', '#checkedBagInput', '#airlineInput'].forEach(function (sel) {
       $(sel).addEventListener('change', function () {
         updateFiltersNote();
@@ -253,12 +265,56 @@
       nonStop: $('#nonStopInput').checked,
       freeCarryOn: $('#carryOnInput').checked,
       freeChecked: $('#checkedBagInput').checked,
-      airlines: ($('#airlineInput').value || '')
-        .toUpperCase().split(/[,\s]+/)
-        .map(function (s) { return s.trim(); })
-        .filter(function (s) { return /^[A-Z0-9]{2}$/.test(s); }),
+      // Chips plus anything typed into the overflow box, de-duplicated.
+      airlines: pickedAirlines.concat(
+        ($('#airlineInput').value || '')
+          .toUpperCase().split(/[,\s]+/)
+          .map(function (s) { return s.trim(); })
+          .filter(function (s) { return /^[A-Z0-9]{2}$/.test(s); })
+      ).filter(function (c, i, a) { return a.indexOf(c) === i; }),
       fareSource: ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value || 'manual'
     };
+  }
+
+  /* One-click airline chips. A short curated list beats a free-text code box
+   * for the 95% case — nobody remembers that Frontier is F9. */
+  function buildAirlineChips() {
+    var host = $('#airlineChips');
+    var lastGroup = null;
+
+    PB.POPULAR_AIRLINES.forEach(function (a) {
+      if (lastGroup && a.group !== lastGroup) {
+        var sep = document.createElement('span');
+        sep.className = 'chip-sep';
+        host.appendChild(sep);
+      }
+      lastGroup = a.group;
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip-toggle';
+      btn.dataset.code = a.code;
+      btn.textContent = a.name;
+      btn.title = a.code;
+      btn.addEventListener('click', function () {
+        var i = pickedAirlines.indexOf(a.code);
+        if (i === -1) pickedAirlines.push(a.code); else pickedAirlines.splice(i, 1);
+        renderAirlineChips();
+        updateFiltersNote();
+        persistSearchForm();
+        if (liveOffers.length) applyOfferFilters();
+      });
+      host.appendChild(btn);
+    });
+
+    renderAirlineChips();
+  }
+
+  function renderAirlineChips() {
+    $$('#airlineChips .chip-toggle').forEach(function (btn) {
+      btn.classList.toggle('is-on', pickedAirlines.indexOf(btn.dataset.code) !== -1);
+    });
+    $('#clearAirlines').hidden = !pickedAirlines.length && !$('#airlineInput').value;
   }
 
   /* The filters describe real flights, which only exist in live mode. Say so
@@ -269,7 +325,15 @@
     if (q.nonStop) on.push('nonstop');
     if (q.freeCarryOn) on.push('free carry-on');
     if (q.freeChecked) on.push('free checked bag');
-    if (q.airlines.length) on.push(q.airlines.join('/'));
+    if (q.airlines.length) {
+      var named = q.airlines.map(function (code) {
+        var hit = PB.POPULAR_AIRLINES.filter(function (a) { return a.code === code; })[0];
+        return hit ? hit.name : code;
+      });
+      on.push(named.length > 4
+        ? named.length + ' airlines'
+        : named.join(', '));
+    }
 
     var note = $('#filtersNote');
     if (!on.length) { note.textContent = ''; note.classList.remove('warn'); return; }
@@ -302,7 +366,14 @@
     $('#nonStopInput').checked = !!s.nonStop;
     $('#carryOnInput').checked = !!s.freeCarryOn;
     $('#checkedBagInput').checked = !!s.freeChecked;
-    if (s.airlines && s.airlines.length) $('#airlineInput').value = s.airlines.join(', ');
+    /* Restore chips for anything in the curated list; the rest goes back into
+     * the free-text overflow box. */
+    if (s.airlines && s.airlines.length) {
+      var known = PB.POPULAR_AIRLINES.map(function (a) { return a.code; });
+      pickedAirlines = s.airlines.filter(function (c) { return known.indexOf(c) !== -1; });
+      var extra = s.airlines.filter(function (c) { return known.indexOf(c) === -1; });
+      if (extra.length) $('#airlineInput').value = extra.join(', ');
+    }
 
     var mode = (state.settings && state.settings.fareSource) || 'manual';
     var radio = $$('input[name=fareSource]').filter(function (r) { return r.value === mode; })[0];
@@ -310,6 +381,7 @@
     applyFareSource(mode);
     updateAirportHints();
     updateFiltersNote();
+    if ($('#airlineChips').children.length) renderAirlineChips();
   }
 
   /** Real balances plus any credit-card bonuses being simulated. */
