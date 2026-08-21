@@ -35,16 +35,46 @@ enable it. Switch by changing `AMADEUS_HOST` in `wrangler.toml`.
 
 ### 2. Deploy the worker
 
-From this `worker/` directory:
+You need a free Cloudflare account: <https://dash.cloudflare.com/sign-up>.
+**Verify the confirmation email.** An unverified account cannot authorise
+anything, which is the usual reason the sign-in button appears to do nothing.
+
+#### Recommended: API token (skips the browser flow)
+
+`npx wrangler login` needs the browser to redirect back to `localhost:8976`.
+When that round-trip fails it simply times out after two minutes with no
+useful error. A token avoids it entirely.
+
+1. Go to <https://dash.cloudflare.com/profile/api-tokens>
+2. **Create Token** → use the **Edit Cloudflare Workers** template → Continue → Create Token
+3. Copy the token, then from this `worker/` directory:
+
+```powershell
+.\deploy.ps1
+```
+
+It prompts for the token and your Amadeus keys, stores the secrets on the
+worker, and deploys. Nothing is written to disk and no secret is echoed.
+
+Or do it by hand:
 
 ```bash
-npx wrangler login
-npx wrangler secret put AMADEUS_CLIENT_ID       # paste your API Key
-npx wrangler secret put AMADEUS_CLIENT_SECRET   # paste your API Secret
+export CLOUDFLARE_API_TOKEN=...              # PowerShell: $env:CLOUDFLARE_API_TOKEN="..."
+npx wrangler secret put AMADEUS_CLIENT_ID
+npx wrangler secret put AMADEUS_CLIENT_SECRET
 npx wrangler deploy
 ```
 
-Wrangler prints a URL like `https://milematch.yourname.workers.dev`.
+#### Alternative: OAuth
+
+```bash
+npx wrangler login
+```
+
+If this hangs on "Timed out waiting for authorization code", the browser never
+completed the round-trip — use the token method above rather than retrying.
+
+Either way, wrangler prints a URL like `https://milematch.yourname.workers.dev`.
 
 ### 3. Point the app at it
 
