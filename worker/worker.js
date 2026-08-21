@@ -74,6 +74,12 @@ async function handleSearch(url, env, origin) {
   if (p.get('returnDate')) q.set('returnDate', p.get('returnDate'));
   if (p.get('travelClass')) q.set('travelClass', p.get('travelClass'));
   if (p.get('nonStop') === 'true') q.set('nonStop', 'true');
+  // Amadeus rejects both filters together, so only ever forward one.
+  if (p.get('includedAirlineCodes')) {
+    q.set('includedAirlineCodes', p.get('includedAirlineCodes'));
+  } else if (p.get('excludedAirlineCodes')) {
+    q.set('excludedAirlineCodes', p.get('excludedAirlineCodes'));
+  }
 
   const res = await fetch(`https://${host}/v2/shopping/flight-offers?${q}`, {
     headers: { Authorization: `Bearer ${token}` }

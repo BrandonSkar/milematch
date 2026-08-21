@@ -153,7 +153,11 @@
     });
 
     $$('input[name=fareSource]').forEach(function (r) {
-      r.addEventListener('change', function () { applyFareSource(this.value); persistSearchForm(); });
+      r.addEventListener('change', function () {
+        applyFareSource(this.value);
+        updateFiltersNote();
+        persistSearchForm();
+      });
     });
 
     /* Every one of these feeds the Google Flights deep link, so the link has
@@ -164,6 +168,16 @@
         persistSearchForm();
       });
     });
+
+    ['#nonStopInput', '#carryOnInput', '#checkedBagInput', '#airlineInput'].forEach(function (sel) {
+      $(sel).addEventListener('change', function () {
+        updateFiltersNote();
+        persistSearchForm();
+        // Re-filter what's already on screen instead of re-querying Amadeus.
+        if (liveOffers.length) applyOfferFilters();
+      });
+    });
+    $('#airlineInput').addEventListener('input', updateFiltersNote);
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -236,8 +250,38 @@
       passengers: Math.max(1, parseInt($('#paxInput').value, 10) || 1),
       roundTrip: $('#roundTripInput').checked,
       cashPrice: parseFloat($('#cashInput').value) || null,
+      nonStop: $('#nonStopInput').checked,
+      freeCarryOn: $('#carryOnInput').checked,
+      freeChecked: $('#checkedBagInput').checked,
+      airlines: ($('#airlineInput').value || '')
+        .toUpperCase().split(/[,\s]+/)
+        .map(function (s) { return s.trim(); })
+        .filter(function (s) { return /^[A-Z0-9]{2}$/.test(s); }),
       fareSource: ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value || 'manual'
     };
+  }
+
+  /* The filters describe real flights, which only exist in live mode. Say so
+   * rather than letting them look active while doing nothing. */
+  function updateFiltersNote() {
+    var q = readForm();
+    var on = [];
+    if (q.nonStop) on.push('nonstop');
+    if (q.freeCarryOn) on.push('free carry-on');
+    if (q.freeChecked) on.push('free checked bag');
+    if (q.airlines.length) on.push(q.airlines.join('/'));
+
+    var note = $('#filtersNote');
+    if (!on.length) { note.textContent = ''; note.classList.remove('warn'); return; }
+
+    if (q.fareSource === 'live') {
+      note.textContent = 'Filtering live fares by: ' + on.join(', ') + '.';
+      note.classList.remove('warn');
+    } else {
+      note.innerHTML = 'These filters need real flights to filter. Switch the fare source to ' +
+        '<b>Live search</b> — otherwise they are ignored.';
+      note.classList.add('warn');
+    }
   }
 
   function persistSearchForm() {
@@ -255,12 +299,17 @@
     if (s.cashPrice) $('#cashInput').value = s.cashPrice;
     $('#roundTripInput').checked = s.roundTrip !== false;
     $('#returnInput').disabled = !$('#roundTripInput').checked;
+    $('#nonStopInput').checked = !!s.nonStop;
+    $('#carryOnInput').checked = !!s.freeCarryOn;
+    $('#checkedBagInput').checked = !!s.freeChecked;
+    if (s.airlines && s.airlines.length) $('#airlineInput').value = s.airlines.join(', ');
 
     var mode = (state.settings && state.settings.fareSource) || 'manual';
     var radio = $$('input[name=fareSource]').filter(function (r) { return r.value === mode; })[0];
     if (radio) radio.checked = true;
     applyFareSource(mode);
     updateAirportHints();
+    updateFiltersNote();
   }
 
   /** Real balances plus any credit-card bonuses being simulated. */
@@ -309,9 +358,7 @@
           return;
         }
         setStatus('');
-        selectedOfferId = offers[0].id;
-        renderOffers();
-        evaluateWith(q, offers[0].price);
+        applyOfferFilters();
       }).catch(function (err) {
         setStatus('Live search failed: ' + esc(err.message) +
           '<br><small>Check the worker URL in Settings, or switch to entering the price yourself.</small>', 'err');
@@ -348,24 +395,55 @@
     renderResults(result, lastQuery);
   }
 
-  function renderOffers() {
+  /* Narrow the live offers to what the filters allow, pick the cheapest
+   * survivor, and price it. Runs on every filter change without re-querying. */
+  function applyOfferFilters() {
+    var q = readForm();
+    var shown = PB.flights.applyFilters(liveOffers, q);
+
+    if (!shown.length) {
+      setStatus('No fares match those filters. ' + liveOffers.length +
+                ' were found before filtering — try relaxing one.', 'err');
+      $('#offersWrap').hidden = true;
+      $('#results').innerHTML = '';
+      return;
+    }
+
+    setStatus(shown.length < liveOffers.length
+      ? 'Showing ' + shown.length + ' of ' + liveOffers.length + ' fares after filtering.'
+      : '');
+
+    if (!shown.some(function (o) { return o.id === selectedOfferId; })) {
+      selectedOfferId = shown[0].id;
+    }
+    renderOffers(shown);
+    var picked = shown.filter(function (o) { return o.id === selectedOfferId; })[0];
+    evaluateWith(q, picked.price);
+  }
+
+  function renderOffers(offers) {
     var wrap = $('#offers');
     wrap.innerHTML = '';
-    liveOffers.slice(0, 12).forEach(function (o) {
+    (offers || liveOffers).slice(0, 12).forEach(function (o) {
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'offer' + (o.id === selectedOfferId ? ' is-selected' : '');
+      var bags = [];
+      if (o.bags.cabin > 0) bags.push('carry-on');
+      if (o.bags.checked > 0) bags.push(o.bags.checked + ' checked');
+
       btn.innerHTML =
         '<span class="offer-main">' +
           '<span class="offer-carrier">' + esc(o.carriers.join(', ')) + '</span>' +
           '<span class="offer-meta">' + (o.stops === 0 ? 'Nonstop' : o.stops + ' stop' + (o.stops > 1 ? 's' : '')) +
-            (o.durationText ? ' · ' + esc(o.durationText) : '') + '</span>' +
+            (o.durationText ? ' · ' + esc(o.durationText) : '') +
+            (bags.length ? ' · incl. ' + esc(bags.join(' + ')) : '') + '</span>' +
         '</span>' +
         '<span class="offer-price">' + PB.fmt.money(o.price) + '</span>';
+
       btn.addEventListener('click', function () {
         selectedOfferId = o.id;
-        renderOffers();
-        evaluateWith(lastQuery, o.price);
+        applyOfferFilters();
       });
       wrap.appendChild(btn);
     });
@@ -406,19 +484,45 @@
         'Every option below shows how far short you are — or try the <b>Cards</b> tab to see which welcome bonus would close the gap.</div>';
     }
 
-    html += '<div class="availability-warning">' +
-      '<strong>These are chart prices, not available flights.</strong> ' +
-      'MileMatch has no award seat data — it shows what each program <em>would</em> charge if a saver ' +
-      'award is open on your dates. Many will not be. Check the airline before transferring anything.' +
+    /* Headline: the single answer, stated once, in plain language. Everything
+     * else on the page is supporting detail you can choose to open. */
+    var best = affordable[0];
+    if (best) {
+      html += '<div class="headline">' +
+        '<div class="headline-label">Cheapest way to book this</div>' +
+        '<div class="headline-main">' +
+          '<span class="headline-program">' + esc(best.program.short) + '</span>' +
+          '<span class="headline-cost">' + PB.fmt.miles(best.miles) + ' pts' +
+            (best.taxes ? ' <em>+ ' + PB.fmt.money(best.taxes) + '</em>' : '') + '</span>' +
+        '</div>' +
+        '<div class="headline-sub">Instead of ' + PB.fmt.money(q.cashPrice) + ' cash · ' +
+          PB.fmt.cpp(best.cpp) + ' per point · ' +
+          (best.plan.steps.length === 1 && best.plan.steps[0].type === 'direct'
+            ? 'miles already in your account'
+            : 'transfer from ' + esc((best.plan.steps.filter(function (s) { return s.type === 'transfer'; })[0] || {}).name || '—')) +
+        '</div>' +
       '</div>';
+    }
 
-    html += '<h2 class="section-title">What each program would charge ' +
-            '<small>ranked by value per point, reachable first</small></h2>';
+    html += '<div class="availability-warning">' +
+      '<strong>Chart prices, not available seats.</strong> ' +
+      'Confirm on the airline before transferring — many of these will not be bookable.' +
+      '</div>';
 
     if (!shown.length) {
       html += '<p class="empty">Nothing to show.</p>';
     } else {
-      shown.forEach(function (o, i) { html += renderOption(o, q, i === 0 && o.affordable); });
+      var affordableShown = shown.filter(function (o) { return o.affordable; });
+      var lockedShown = shown.filter(function (o) { return !o.affordable; });
+
+      affordableShown.forEach(function (o, i) { html += renderOption(o, q, i === 0); });
+
+      if (lockedShown.length) {
+        html += '<details class="locked-group"><summary>' + lockedShown.length +
+                ' more you don\'t have enough points for</summary>';
+        lockedShown.forEach(function (o) { html += renderOption(o, q, false); });
+        html += '</details>';
+      }
     }
 
     /* Portal comparison */
@@ -448,25 +552,30 @@
     return '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
   }
 
+  /* One line you can scan, with the detail folded away behind it. The old
+   * layout showed five metrics, four badges, a transfer plan, alternate
+   * sources, provenance and three links on every one of 22 results — far too
+   * much to read. */
   function renderOption(o, q, isBest) {
-    var cls = 'option' + (isBest ? ' is-best' : '') + (o.affordable ? '' : ' is-unaffordable');
-    var h = '<div class="' + cls + '">';
+    var cls = 'result' + (isBest ? ' is-best' : '') + (o.affordable ? '' : ' is-locked');
+    var h = '<details class="' + cls + '"' + (isBest ? ' open' : '') + '>';
 
-    h += '<div class="option-head"><div class="option-name">' + esc(o.program.name) +
-         (o.program.alliance && o.program.alliance !== 'none'
-            ? '<span class="option-alliance">' + esc(o.program.alliance) + '</span>' : '') +
-         '</div><div class="badges">';
-    if (isBest) h += '<span class="badge great">Best match</span>';
-    if (o.verdict !== 'unknown') h += '<span class="badge ' + o.verdict + '">' + VERDICT_LABEL[o.verdict] + '</span>';
-    if (!o.affordable) h += '<span class="badge short">Short ' + PB.fmt.miles(o.shortfall) + '</span>';
-    if (o.roundTripChart) h += '<span class="badge info">Round trip only</span>';
-    h += '</div></div>';
+    h += '<summary>' +
+      '<span class="result-program">' + esc(o.program.short) +
+        (o.roundTripChart ? '<em> · round trip</em>' : '') + '</span>' +
+      '<span class="result-cost">' + PB.fmt.miles(o.miles) + '<small> pts</small></span>' +
+      '<span class="result-tax">' + (o.taxes ? '+ ' + PB.fmt.money(o.taxes) : 'no fees') + '</span>' +
+      '<span class="result-cpp ' + o.verdict + '">' + PB.fmt.cpp(o.cpp) + '</span>' +
+      (o.affordable ? '' : '<span class="result-short">short ' + PB.fmt.miles(o.shortfall) + '</span>') +
+      '</summary>';
+
+    h += '<div class="result-body">';
 
     h += '<div class="metrics">' +
-      '<div class="metric"><dt>Points</dt><dd>' + PB.fmt.miles(o.miles) + '</dd></div>' +
-      '<div class="metric"><dt>Taxes &amp; fees</dt><dd class="' + (o.taxes > (q.cashPrice || 0) * 0.4 ? 'bad' : '') + '">' + PB.fmt.money(o.taxes) + '</dd></div>' +
-      '<div class="metric"><dt>Value per point</dt><dd class="' + (o.verdict === 'great' || o.verdict === 'good' ? 'good' : o.verdict === 'bad' ? 'bad' : '') + '">' + PB.fmt.cpp(o.cpp) + '</dd></div>' +
       '<div class="metric"><dt>Cash saved</dt><dd>' + PB.fmt.money(o.savings) + '</dd></div>' +
+      '<div class="metric"><dt>Verdict</dt><dd class="' +
+        (o.verdict === 'great' || o.verdict === 'good' ? 'good' : o.verdict === 'bad' ? 'bad' : '') +
+        '" style="font-size:.85rem">' + VERDICT_LABEL[o.verdict] + '</dd></div>' +
       (q.passengers > 1 ? '<div class="metric"><dt>Per traveler</dt><dd>' + PB.fmt.miles(o.milesPerPerson) + '</dd></div>' : '') +
       '</div>';
 
@@ -528,7 +637,7 @@
 
     if (o.note) h += '<p class="option-note">' + esc(o.note) + '</p>';
 
-    return h + '</div>';
+    return h + '</div></details>';
   }
 
   /* ═══════════════════════ Balances tab ═══════════════════════ */

@@ -86,10 +86,32 @@
       </label>
     </div>
 
-    <label class="toggle">
-      <input type="checkbox" id="roundTripInput" checked>
-      <span>Round trip</span>
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="roundTripInput" checked>
+        <span>Round trip</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="nonStopInput">
+        <span>Nonstop only</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="carryOnInput">
+        <span>Free carry-on</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="checkedBagInput">
+        <span>Free checked bag</span>
+      </label>
+    </div>
+
+    <label class="field airline-field">
+      <span>Airlines <small>optional — leave empty for any</small></span>
+      <input id="airlineInput" placeholder="UA, AA, DL, F9…" autocomplete="off">
+      <small class="hint" id="airlineHint">Two-letter codes, comma separated.</small>
     </label>
+
+    <p class="hint filters-note" id="filtersNote"></p>
 
     <fieldset class="fare-source">
       <legend>Cash price to compare against</legend>

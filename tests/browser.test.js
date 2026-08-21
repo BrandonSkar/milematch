@@ -289,15 +289,52 @@ test('a full search renders ranked results', maybe, async () => {
     set('#cabinInput', 'y'); set('#cashInput', 389);
     document.querySelector('#searchForm')
       .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-    const first = document.querySelector('#results .option');
+    const first = document.querySelector('#results .result');
     return {
-      count: document.querySelectorAll('#results .option').length,
-      firstProgram: first ? first.querySelector('.option-name').textContent.trim() : null,
-      firstAffordable: first ? !first.classList.contains('is-unaffordable') : false
+      count: document.querySelectorAll('#results .result').length,
+      firstProgram: first ? first.querySelector('.result-program').textContent.trim() : null,
+      firstAffordable: first ? !first.classList.contains('is-locked') : false,
+      firstIsOpen: first ? first.hasAttribute('open') : false,
+      headline: !!document.querySelector('.headline'),
+      headlineProgram: (document.querySelector('.headline-program') || {}).textContent,
+      lockedGroup: !!document.querySelector('.locked-group'),
+      banner: !!document.querySelector('.availability-warning')
     };
   })()`);
 
   assert.ok(result.count > 10, 'should price every program');
   assert.ok(result.firstAffordable, 'top result should be one you can actually book');
   assert.deepStrictEqual(pageErrors, [], 'no exceptions during a full search');
+});
+
+/* The results page used to show five metrics, four badges, a transfer plan,
+ * alternate sources, provenance and three links on every one of 22 rows. */
+test('results lead with one plain answer and fold the rest away', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const first = document.querySelector('#results .result');
+    const collapsed = [...document.querySelectorAll('#results .result')]
+      .filter(el => !el.hasAttribute('open')).length;
+    return {
+      headline: (document.querySelector('.headline-program') || {}).textContent || null,
+      headlineCost: (document.querySelector('.headline-cost') || {}).textContent || null,
+      topRowOpen: first ? first.hasAttribute('open') : false,
+      collapsedRows: collapsed,
+      lockedGrouped: !!document.querySelector('.locked-group')
+    };
+  })()`);
+
+  assert.ok(r.headline, 'a single headline answer should be shown');
+  assert.match(r.headlineCost || '', /pts/);
+  assert.ok(r.topRowOpen, 'the best option should start expanded');
+  assert.ok(r.collapsedRows > 3, 'the rest should start collapsed, not all expanded');
+});
+
+test('bag and airline filters are marked inactive outside live mode', maybe, async () => {
+  const note = await evaluate(`(() => {
+    const cb = document.querySelector('#nonStopInput');
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    return document.querySelector('#filtersNote').textContent;
+  })()`);
+  assert.match(note, /Live search/i, 'should say the filters need live fares');
 });

@@ -36,6 +36,11 @@ window.PB = window.PB || {};
     });
     if (q.roundTrip && q.returnDate) params.set('returnDate', q.returnDate);
     if (q.nonStop) params.set('nonStop', 'true');
+    /* Airline filtering happens upstream at Amadeus so we don't burn quota
+     * fetching offers we'd only throw away client-side. */
+    if (q.airlines && q.airlines.length) {
+      params.set('includedAirlineCodes', q.airlines.join(','));
+    }
 
     return fetch(base + '/search?' + params.toString(), {
       headers: { 'Accept': 'application/json' }
@@ -74,15 +79,20 @@ window.PB = window.PB || {};
         });
         return { duration: it.duration, segments: segs, stops: Math.max(0, segs.length - 1) };
       });
-      var carriers = {};
+      var carriers = {}, codes = {};
       itineraries.forEach(function (it) {
-        it.segments.forEach(function (s) { carriers[s.carrierName] = true; });
+        it.segments.forEach(function (s) {
+          carriers[s.carrierName] = true;
+          codes[s.carrier] = true;
+        });
       });
       return {
         id: o.id,
         price: parseFloat(o.price.grandTotal || o.price.total),
         currency: o.price.currency,
         carriers: Object.keys(carriers),
+        carrierCodes: Object.keys(codes),
+        bags: baggageOf(o),
         itineraries: itineraries,
         stops: Math.max.apply(null, itineraries.map(function (i) { return i.stops; })),
         durationText: itineraries.map(function (i) { return prettyDuration(i.duration); }).join(' / ')
@@ -90,6 +100,54 @@ window.PB = window.PB || {};
     });
     offers.sort(function (a, b) { return a.price - b.price; });
     return offers;
+  };
+
+  /* What the fare actually includes, per Amadeus.
+   *
+   * Amadeus reports baggage per traveller per segment. A fare only counts as
+   * including a bag if EVERY segment does — a basic-economy connection that
+   * allows a bag on one leg but not the other is not a "free bag" fare.
+   *
+   * Older API responses omit includedCabinBags entirely. Absent data is
+   * reported as null (unknown), never as false, so the UI can distinguish
+   * "this fare has no bag" from "the API didn't say". */
+  function baggageOf(offer) {
+    var tp = (offer.travelerPricings || [])[0];
+    if (!tp) return { checked: null, cabin: null };
+
+    var details = tp.fareDetailsBySegment || [];
+    if (!details.length) return { checked: null, cabin: null };
+
+    function minAcross(key) {
+      var seen = false, min = Infinity;
+      details.forEach(function (d) {
+        var bag = d[key];
+        if (!bag) return;
+        seen = true;
+        // Amadeus gives either a piece count or a weight allowance.
+        var qty = bag.quantity != null ? bag.quantity : (bag.weight > 0 ? 1 : 0);
+        min = Math.min(min, qty);
+      });
+      return seen ? min : null;
+    }
+
+    return { checked: minAcross('includedCheckedBags'), cabin: minAcross('includedCabinBags') };
+  }
+
+  /** Client-side filters for things Amadeus can't express as query params. */
+  PB.flights.applyFilters = function (offers, filters) {
+    filters = filters || {};
+    return offers.filter(function (o) {
+      if (filters.nonStop && o.stops !== 0) return false;
+      // Unknown baggage never silently fails the filter — see baggageOf().
+      if (filters.freeCarryOn && o.bags.cabin !== null && o.bags.cabin < 1) return false;
+      if (filters.freeChecked && o.bags.checked !== null && o.bags.checked < 1) return false;
+      if (filters.airlines && filters.airlines.length) {
+        var hit = o.carrierCodes.some(function (c) { return filters.airlines.indexOf(c) !== -1; });
+        if (!hit) return false;
+      }
+      return true;
+    });
   };
 
   function prettyDuration(iso) {

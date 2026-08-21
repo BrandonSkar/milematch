@@ -225,16 +225,73 @@ textarea { min-height: 110px; font-family: var(--mono); font-size: .82rem; resiz
 .offer-price { font-family: var(--mono); font-size: 1.05rem; font-weight: 700; white-space: nowrap; }
 
 /* ── Results ─────────────────────────────────────────────────── */
-.option {
-  background: var(--bg-elev); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 1rem 1.1rem; margin-bottom: .7rem;
+/* ── Headline: the one answer, stated once ───────────────────── */
+.headline {
+  background: var(--bg-elev); border: 1px solid var(--great);
+  border-radius: var(--radius); padding: 1rem 1.2rem; margin-bottom: .8rem;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--great) 25%, transparent);
 }
-.option.is-best { border-color: var(--great); box-shadow: 0 0 0 1px color-mix(in srgb, var(--great) 40%, transparent); }
-.option.is-unaffordable { opacity: .62; }
+.headline-label {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-faint); font-weight: 700; margin-bottom: .3rem;
+}
+.headline-main { display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap; }
+.headline-program { font-size: 1.25rem; font-weight: 700; }
+.headline-cost { font-family: var(--mono); font-size: 1.25rem; font-weight: 700; color: var(--great); }
+.headline-cost em { font-style: normal; font-size: .9rem; color: var(--text-dim); font-weight: 500; }
+.headline-sub { font-size: .8rem; color: var(--text-dim); margin-top: .35rem; }
 
-.option-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-.option-name { font-size: 1rem; font-weight: 650; }
-.option-alliance { font-size: .72rem; color: var(--text-faint); font-weight: 400; margin-left: .4rem; }
+/* ── Result rows: scannable, detail folded away ──────────────── */
+.result {
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); margin-bottom: .35rem;
+}
+.result.is-best { border-color: color-mix(in srgb, var(--great) 55%, var(--line)); }
+.result.is-locked { opacity: .6; }
+
+.result > summary {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: .9rem; align-items: baseline;
+  padding: .62rem .85rem; cursor: pointer; list-style: none;
+}
+.result > summary::-webkit-details-marker { display: none; }
+.result > summary:hover { background: var(--bg-elev-2); border-radius: var(--radius-sm); }
+.result[open] > summary { border-bottom: 1px solid var(--line-soft); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+
+.result-program { font-weight: 600; font-size: .92rem; }
+.result-program em { font-style: normal; font-size: .72rem; color: var(--text-faint); }
+.result-cost { font-family: var(--mono); font-weight: 700; font-size: .95rem; white-space: nowrap; }
+.result-cost small { font-size: .7rem; font-weight: 400; color: var(--text-faint); }
+.result-tax  { font-family: var(--mono); font-size: .8rem; color: var(--text-dim); white-space: nowrap; }
+.result-cpp  { font-family: var(--mono); font-size: .85rem; font-weight: 700; white-space: nowrap; min-width: 3.4em; text-align: right; }
+.result-cpp.great, .result-cpp.good { color: var(--good); }
+.result-cpp.poor { color: var(--warn); }
+.result-cpp.bad  { color: var(--bad); }
+.result-short { font-size: .72rem; color: var(--bad); white-space: nowrap; }
+
+.result-body { padding: .75rem .85rem .85rem; }
+
+.locked-group { margin-top: .9rem; }
+.locked-group > summary {
+  cursor: pointer; font-size: .8rem; color: var(--text-dim);
+  padding: .5rem 0; list-style: none;
+}
+.locked-group > summary::-webkit-details-marker { display: none; }
+.locked-group > summary::before { content: '▸ '; }
+.locked-group[open] > summary::before { content: '▾ '; }
+.locked-group > summary:hover { color: var(--text); }
+
+@media (max-width: 620px) {
+  .result > summary { grid-template-columns: 1fr auto; row-gap: .25rem; }
+  .result-tax, .result-cpp { text-align: left; }
+}
+
+/* ── Filters ─────────────────────────────────────────────────── */
+.toggle-row { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-bottom: .8rem; }
+.airline-field { margin-bottom: .5rem; }
+.airline-field > span small { font-weight: 400; color: var(--text-faint); text-transform: none; }
+.filters-note { margin-bottom: .9rem; min-height: 1em; }
 
 .metrics { display: flex; flex-wrap: wrap; gap: 1.3rem; margin: .75rem 0 .5rem; }
 .metric { display: flex; flex-direction: column; }
