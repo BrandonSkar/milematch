@@ -68,13 +68,62 @@ $amadeusSecret | npx --yes wrangler secret put AMADEUS_CLIENT_SECRET
 
 Write-Host ""
 Write-Host "Deploying..."
-npx --yes wrangler deploy
+$deployLog = npx --yes wrangler deploy 2>&1 | Out-String
+Write-Host $deployLog
+
+# Pull the workers.dev URL straight out of the deploy output so it can be
+# written into the site config - one less thing to copy by hand and get wrong.
+$workerUrl = $null
+if ($deployLog -match 'https://[a-z0-9._-]+\.workers\.dev') { $workerUrl = $Matches[0] }
+
+if (-not $workerUrl) {
+    Write-Host "Could not find the workers.dev URL in the deploy output." -ForegroundColor Yellow
+    Write-Host "Copy it from above into data/config.js -> sharedProxyUrl yourself."
+    exit 0
+}
+
+Write-Host "Worker URL: $workerUrl" -ForegroundColor Cyan
+
+# Confirm it actually answers before wiring it into the site.
+Write-Host "Checking /health..." -NoNewline
+try {
+    $health = Invoke-RestMethod -Uri "$workerUrl/health" -TimeoutSec 20
+    if ($health.credentials) {
+        Write-Host " ok - Amadeus credentials present." -ForegroundColor Green
+    } else {
+        Write-Host " reachable, but Amadeus credentials are MISSING." -ForegroundColor Red
+    }
+} catch {
+    Write-Host " could not reach it yet (deploys take a few seconds to propagate)." -ForegroundColor Yellow
+}
+
+# Write the URL into data/config.js so every visitor gets live fares.
+$configPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'data\config.js'
+if (Test-Path $configPath) {
+    $cfg = Get-Content $configPath -Raw
+    $updated = [regex]::Replace(
+        $cfg,
+        "sharedProxyUrl:\s*'[^']*'",
+        "sharedProxyUrl: '$workerUrl'"
+    )
+    if ($updated -ne $cfg) {
+        # Write UTF-8 without BOM; the file contains em dashes that a BOM-ful
+        # or ANSI write would mangle.
+        [System.IO.File]::WriteAllText($configPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "Wrote the URL into data/config.js." -ForegroundColor Green
+    } else {
+        Write-Host "data/config.js already pointed somewhere - left it alone." -ForegroundColor Yellow
+    }
+}
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
-Write-Host "Copy the workers.dev URL printed above into MileMatch -> Settings -> Worker URL,"
-Write-Host "press 'Test connection', then choose 'Live search' on the Search tab."
 Write-Host ""
-Write-Host "Once you know your Pages origin, set ALLOWED_ORIGIN in wrangler.toml to"
-Write-Host "https://brandonskar.github.io and run 'npx wrangler deploy' again so other"
-Write-Host "sites cannot spend your Amadeus quota."
+Write-Host "Last step - publish it so your friends get live search too:" -ForegroundColor Cyan
+Write-Host '    cd ..'
+Write-Host '    git add data/config.js'
+Write-Host '    git commit -m "Point the site at the shared fare worker"'
+Write-Host '    git push'
+Write-Host ""
+Write-Host "ALLOWED_ORIGIN is already set to https://brandonskar.github.io in"
+Write-Host "wrangler.toml, so other sites cannot spend your Amadeus quota."
