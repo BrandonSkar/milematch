@@ -535,25 +535,86 @@
     evaluateWith(q, picked.price);
   }
 
+  /* Time strings arrive as "2026-11-15 07:00" (worker) or ISO (older paths).
+   * Show a plain clock time; fall back to the raw value rather than "Invalid
+   * Date" if a provider sends something unexpected. */
+  function clockTime(raw) {
+    if (!raw) return '';
+    var m = /(\d{1,2}):(\d{2})/.exec(String(raw));
+    if (!m) return '';
+    var h = parseInt(m[1], 10);
+    var suffix = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + ':' + m[2] + ' ' + suffix;
+  }
+
   function renderOffers(offers) {
     var wrap = $('#offers');
+    var list = (offers || liveOffers).slice(0, 12);
+    var cheapest = list.length ? Math.min.apply(null, list.map(function (o) { return o.price; })) : 0;
     wrap.innerHTML = '';
-    (offers || liveOffers).slice(0, 12).forEach(function (o) {
+
+    list.forEach(function (o) {
+      var selected = o.id === selectedOfferId;
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'offer' + (o.id === selectedOfferId ? ' is-selected' : '');
+      btn.className = 'offer' + (selected ? ' is-selected' : '');
+      btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+
       var bags = [];
       if (o.bags.cabin > 0) bags.push('carry-on');
-      if (o.bags.checked > 0) bags.push(o.bags.checked + ' checked');
+      if (o.bags.checked > 0) bags.push(o.bags.checked + ' bag' + (o.bags.checked > 1 ? 's' : ''));
 
-      btn.innerHTML =
+      var meta = [];
+      meta.push(o.stops === 0 ? 'Nonstop'
+              : o.stops == null ? 'Stops unknown'
+              : o.stops + ' stop' + (o.stops > 1 ? 's' : ''));
+      if (o.durationText) meta.push(esc(o.durationText));
+      if (bags.length) meta.push('incl. ' + esc(bags.join(' + ')));
+
+      var extra = o.price - cheapest;
+
+      var h = '<span class="offer-row">' +
         '<span class="offer-main">' +
-          '<span class="offer-carrier">' + esc(o.carriers.join(', ')) + '</span>' +
-          '<span class="offer-meta">' + (o.stops === 0 ? 'Nonstop' : o.stops + ' stop' + (o.stops > 1 ? 's' : '')) +
-            (o.durationText ? ' · ' + esc(o.durationText) : '') +
-            (bags.length ? ' · incl. ' + esc(bags.join(' + ')) : '') + '</span>' +
+          '<span class="offer-carrier">' + esc(o.carriers.join(', ')) +
+            (o.price === cheapest ? '<span class="offer-tag">cheapest</span>' : '') +
+            (o.stops === 0 ? '<span class="offer-tag alt">nonstop</span>' : '') +
+          '</span>' +
+          '<span class="offer-meta">' + meta.join(' · ') + '</span>' +
         '</span>' +
-        '<span class="offer-price">' + PB.fmt.money(o.price) + '</span>';
+        '<span class="offer-priceblock">' +
+          '<span class="offer-price">' + PB.fmt.money(o.price) + '</span>' +
+          (extra > 0 ? '<span class="offer-delta">+' + PB.fmt.money(extra) + '</span>' : '') +
+        '</span>' +
+      '</span>';
+
+      /* Expand the chosen flight so picking one shows what you actually
+       * picked - times, airports, flight numbers - rather than just
+       * highlighting a row. */
+      if (selected) {
+        var segs = (o.itineraries && o.itineraries[0] && o.itineraries[0].segments) || [];
+        h += '<span class="offer-detail">';
+        if (segs.length) {
+          segs.forEach(function (s, i) {
+            h += '<span class="leg">' +
+              '<b>' + esc(s.from || '?') + '</b> ' + esc(clockTime(s.depart)) +
+              ' <span class="leg-arrow">→</span> ' +
+              '<b>' + esc(s.to || '?') + '</b> ' + esc(clockTime(s.arrive)) +
+              (s.carrierName || s.number
+                ? '<em>' + esc([s.carrierName, s.number].filter(Boolean).join(' ')) + '</em>'
+                : '') +
+              '</span>';
+            if (i < segs.length - 1) {
+              h += '<span class="leg-stop">connection in ' + esc(segs[i + 1].from || '?') + '</span>';
+            }
+          });
+        } else {
+          h += '<span class="leg-stop">No itinerary detail for this fare.</span>';
+        }
+        h += '<span class="offer-chosen">Priced in points below ↓</span></span>';
+      }
+
+      btn.innerHTML = h;
 
       btn.addEventListener('click', function () {
         selectedOfferId = o.id;

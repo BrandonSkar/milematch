@@ -220,19 +220,66 @@ kbd {
 .trip-summary dd { margin: 0; font-size: .95rem; font-weight: 600; }
 
 /* ── Live offers ─────────────────────────────────────────────── */
-.offers { display: grid; gap: .5rem; }
+.offers-explain { margin: -.2rem 0 .7rem; line-height: 1.45; }
+.offers { display: grid; gap: .4rem; }
 .offer {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  display: block; width: 100%; text-align: left; cursor: pointer;
   background: var(--bg-elev); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); padding: .7rem .9rem; cursor: pointer;
-  text-align: left; width: 100%;
+  border-radius: var(--radius-sm); padding: .7rem .9rem;
+  transition: border-color .12s, background .12s;
 }
-.offer:hover { border-color: var(--accent); }
-.offer.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.offer:hover { border-color: var(--text-faint); }
+.offer.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
+}
+
+.offer-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .offer-main { min-width: 0; }
-.offer-carrier { font-weight: 600; font-size: .9rem; }
-.offer-meta { font-size: .76rem; color: var(--text-dim); }
+
+/* These were inline spans, which ran the carrier straight into the stop
+   count - "Frontier1 stop". They need to be block-level. */
+.offer-carrier {
+  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  font-weight: 600; font-size: .9rem; margin-bottom: .12rem;
+}
+.offer-meta { display: block; font-size: .76rem; color: var(--text-dim); }
+
+.offer-tag {
+  font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--good); border: 1px solid color-mix(in srgb, var(--good) 50%, transparent);
+  background: color-mix(in srgb, var(--good) 12%, transparent);
+  border-radius: 999px; padding: .1rem .4rem;
+}
+.offer-tag.alt {
+  color: var(--text-dim); border-color: var(--line);
+  background: transparent;
+}
+
+.offer-priceblock { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
 .offer-price { font-family: var(--mono); font-size: 1.05rem; font-weight: 700; white-space: nowrap; }
+.offer-delta { font-size: .68rem; color: var(--text-faint); font-family: var(--mono); }
+
+/* Itinerary shown for the flight you picked. */
+.offer-detail {
+  display: block; margin-top: .6rem; padding-top: .6rem;
+  border-top: 1px dashed var(--line);
+}
+.leg {
+  display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap;
+  font-size: .78rem; color: var(--text-dim); padding: .12rem 0;
+}
+.leg b { color: var(--text); font-family: var(--mono); font-weight: 700; }
+.leg em { font-style: normal; color: var(--text-faint); font-size: .72rem; margin-left: auto; }
+.leg-arrow { color: var(--text-faint); }
+.leg-stop {
+  display: block; font-size: .72rem; color: var(--text-faint);
+  padding: .1rem 0 .1rem .9rem; border-left: 2px solid var(--line); margin: .15rem 0 .15rem .3rem;
+}
+.offer-chosen {
+  display: block; margin-top: .5rem; font-size: .72rem;
+  color: var(--accent); font-weight: 600;
+}
 
 /* ── Results ─────────────────────────────────────────────────── */
 /* ── Headline: the one answer, stated once ───────────────────── */

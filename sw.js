@@ -5,7 +5,7 @@
  *
  * Bump CACHE when you change any cached file, or the old copy will stick around.
  */
-const CACHE = 'milematch-v12';
+const CACHE = 'milematch-v13';
 
 const ASSETS = [
   './',
