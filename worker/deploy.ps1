@@ -71,14 +71,29 @@ if ($authenticated) {
     }
 }
 
-Write-Host ""
-Write-Host "SerpApi key (from step 3 above)."
-$serpKey = Read-Secret "  API key"
-if (-not $serpKey) { throw "A SerpApi key is required." }
+# Don't make someone re-paste a key that is already stored - this script gets
+# re-run after fixable failures like a missing workers.dev subdomain.
+$existingSecrets = npx --yes wrangler secret list 2>&1 | Out-String
+if ($existingSecrets -match 'SERPAPI_KEY') {
+    Write-Host ""
+    Write-Host "SerpApi key is already stored on this worker." -ForegroundColor Green
+    $replace = Read-Host "  Press Enter to keep it, or type 'new' to replace"
+    if ($replace -eq 'new') {
+        $serpKey = Read-Secret "  New API key"
+        if (-not $serpKey) { throw "A SerpApi key is required." }
+        Write-Host "Storing the secret on the worker..."
+        $serpKey | npx --yes wrangler secret put SERPAPI_KEY
+    }
+} else {
+    Write-Host ""
+    Write-Host "SerpApi key (from step 3 above)."
+    $serpKey = Read-Secret "  API key"
+    if (-not $serpKey) { throw "A SerpApi key is required." }
 
-Write-Host ""
-Write-Host "Storing the secret on the worker..."
-$serpKey | npx --yes wrangler secret put SERPAPI_KEY
+    Write-Host ""
+    Write-Host "Storing the secret on the worker..."
+    $serpKey | npx --yes wrangler secret put SERPAPI_KEY
+}
 
 Write-Host ""
 Write-Host "Deploying..."
@@ -89,6 +104,21 @@ Write-Host $deployLog
 # written into the site config - one less thing to copy by hand and get wrong.
 $workerUrl = $null
 if ($deployLog -match 'https://[a-z0-9._-]+\.workers\.dev') { $workerUrl = $Matches[0] }
+
+# A brand new Cloudflare account has no workers.dev subdomain, and the deploy
+# fails with a warning that does not say where to fix it.
+if ($deployLog -match 'register a workers\.dev subdomain') {
+    Write-Host ""
+    Write-Host "Cloudflare needs a workers.dev subdomain before it will host anything." -ForegroundColor Yellow
+    Write-Host "This is a one-time account setting."
+    Write-Host ""
+    Write-Host "  1. Open https://dash.cloudflare.com"
+    Write-Host "  2. Left sidebar -> Compute (Workers)  [older accounts: Workers & Pages]"
+    Write-Host "  3. It will ask you to choose a subdomain. Pick anything, e.g. your name."
+    Write-Host "  4. Re-run this script. It will not ask for your SerpApi key again."
+    Write-Host ""
+    exit 1
+}
 
 if (-not $workerUrl) {
     Write-Host "Could not find the workers.dev URL in the deploy output." -ForegroundColor Yellow
