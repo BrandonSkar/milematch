@@ -177,15 +177,17 @@ try {
 # Write the URL into data/config.js so every visitor gets live fares.
 $configPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'data\config.js'
 if (Test-Path $configPath) {
-    $cfg = Get-Content $configPath -Raw
+    # Read AND write as explicit UTF-8. Get-Content -Raw treats a BOM-less file
+    # as ANSI on PowerShell 5.1, which turns the em dashes in this file into
+    # mojibake on the round trip - it did exactly that once already.
+    $cfg = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]::UTF8)
     $updated = [regex]::Replace(
         $cfg,
         "sharedProxyUrl:\s*'[^']*'",
         "sharedProxyUrl: '$workerUrl'"
     )
     if ($updated -ne $cfg) {
-        # Write UTF-8 without BOM; the file contains em dashes that a BOM-ful
-        # or ANSI write would mangle.
+        # UTF-8 without BOM, to match how the file is served.
         [System.IO.File]::WriteAllText($configPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "Wrote the URL into data/config.js." -ForegroundColor Green
     } else {

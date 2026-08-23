@@ -28,7 +28,7 @@ window.PB = window.PB || {};
 
 PB.CONFIG = {
   /* e.g. 'https://milematch.yourname.workers.dev' */
-  sharedProxyUrl: '',
+  sharedProxyUrl: 'https://milematch.branskar01.workers.dev',
 
   /* Shown next to the Settings field so people know a shared worker is in use
    * and whose quota they are spending. */
