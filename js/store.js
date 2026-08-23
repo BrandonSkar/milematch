@@ -15,7 +15,8 @@ window.PB = window.PB || {};
     settings: {
       proxyUrl: '',
       fareSource: 'paste',  // 'paste' | 'manual' | 'estimate' | 'live'
-      hideUnaffordable: false
+      hideUnaffordable: false,
+      iosNoticeDismissed: false
     },
     lastSearch: {
       from: '', to: '', date: '', returnDate: '',

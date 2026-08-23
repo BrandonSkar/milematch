@@ -27,6 +27,7 @@
     bindCards();
     bindSettings();
     bindInstall();
+    bindIosInstallNotice();
 
     restoreSearchForm();
     renderBalances();
@@ -1029,6 +1030,32 @@
   }
 
   /* ═══════════════════ PWA install prompt ═════════════════════ */
+
+  /* iOS never fires beforeinstallprompt, so the Install button below never
+   * appears there — and on iOS the stakes are higher than convenience. Safari
+   * deletes all script-writable storage (localStorage included) after 7 days
+   * without a visit, which for a trip-planning app means balances vanish
+   * between trips. Web apps on the Home Screen are exempt: they keep their own
+   * usage counter. So on iOS, installing IS the persistence story. */
+  function bindIosInstallNotice() {
+    var notice = $('#iosInstallNotice');
+    if (!notice) return;
+
+    var ua = navigator.userAgent || '';
+    var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+                // iPadOS 13+ reports as Mac; touch points give it away.
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var standalone = navigator.standalone === true ||
+                     window.matchMedia('(display-mode: standalone)').matches;
+
+    if (!isIOS || standalone || state.settings.iosNoticeDismissed) return;
+
+    notice.hidden = false;
+    $('#dismissIosNotice').addEventListener('click', function () {
+      notice.hidden = true;
+      PB.store.patch({ settings: { iosNoticeDismissed: true } });
+    });
+  }
 
   function bindInstall() {
     var deferred = null;

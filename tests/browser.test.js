@@ -133,6 +133,53 @@ test.after(() => {
 
 const maybe = { skip: !CHROME ? 'Chrome not installed' : false };
 
+/* Everything the user types must survive leaving and coming back — that is the
+ * whole point of the balances tab. */
+test('balances, cards and search settings persist across a reload', maybe, async () => {
+  await evaluate(`(() => {
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    set('#bal-UR', 84000);
+    set('#bal-AS', 12250);
+    document.querySelector('#ccName').value = 'Persist Test Card';
+    document.querySelector('#ccBonus').value = '40000';
+    document.querySelector('#customCardForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    set('#fromInput', 'SEA'); set('#toInput', 'LHR');
+  })()`);
+
+  await send('Page.reload');
+  await sleep(2000);
+
+  const after = await evaluate(`({
+    ur: document.querySelector('#bal-UR').value,
+    as: document.querySelector('#bal-AS').value,
+    from: document.querySelector('#fromInput').value.toUpperCase(),
+    to: document.querySelector('#toInput').value.toUpperCase(),
+    customCard: [...document.querySelectorAll('#cardList .cc-name')]
+      .some(n => n.textContent === 'Persist Test Card'),
+    keys: Object.keys(localStorage)
+  })`);
+
+  assert.strictEqual(after.ur, '84000');
+  assert.strictEqual(after.as, '12250');
+  assert.strictEqual(after.from, 'SEA');
+  assert.strictEqual(after.to, 'LHR');
+  assert.ok(after.customCard, 'a custom card must survive');
+  assert.deepStrictEqual([...after.keys], ['pb.state.v1'], 'one tidy storage key');
+});
+
+/* The iOS notice exists because Safari wipes localStorage after 7 days away.
+ * It must not nag desktop users, where that does not happen. */
+test('the iOS install notice stays hidden on desktop', maybe, async () => {
+  const hidden = await evaluate(`document.querySelector('#iosInstallNotice').hidden`);
+  assert.strictEqual(hidden, true);
+});
+
 test('app boots with no uncaught exceptions', maybe, async () => {
   const booted = await evaluate(`!!(window.PB && Object.keys(PB.airports).length > 200)`);
   assert.ok(booted, 'PB and airport data should be loaded');

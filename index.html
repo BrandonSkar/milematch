@@ -40,6 +40,18 @@
 
 <main>
 
+<!-- Shown only on iOS outside standalone mode, where Safari wipes saved
+     balances after 7 days of not visiting. See bindIosInstallNotice(). -->
+<div id="iosInstallNotice" class="ios-notice" hidden>
+  <div>
+    <strong>Add this to your Home Screen.</strong>
+    On iPhone, Safari deletes saved balances after 7 days away. Installed to the
+    Home Screen it keeps them — tap <strong>Share</strong>, then
+    <strong>Add to Home Screen</strong>.
+  </div>
+  <button type="button" id="dismissIosNotice" class="link-btn" aria-label="Dismiss">Dismiss</button>
+</div>
+
 <!-- ─────────────────────────── SEARCH ─────────────────────────── -->
 <section class="panel is-active" id="panel-search" role="tabpanel">
 

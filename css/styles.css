@@ -369,6 +369,15 @@ kbd {
 .plan-arrow { color: var(--text-faint); }
 .plan-bonus { color: var(--great); font-weight: 600; }
 
+.ios-notice {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius); padding: .8rem 1rem; margin-bottom: 1rem;
+  font-size: .84rem; line-height: 1.45;
+}
+.ios-notice .link-btn { flex: none; }
+
 .availability-warning {
   border-left: 3px solid var(--warn);
   background: color-mix(in srgb, var(--warn) 10%, transparent);
