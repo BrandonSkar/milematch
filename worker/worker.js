@@ -104,6 +104,11 @@ async function handleSearch(url, env, ctx, origin) {
     throw new Error('SERPAPI_KEY is not set on this worker. Run: npx wrangler secret put SERPAPI_KEY');
   }
 
+  /* Trim the key. Piping a value into `wrangler secret put` from PowerShell
+   * appends a newline, which SerpApi rejects as an invalid key with no hint
+   * that whitespace is the problem. */
+  const apiKey = String(env.SERPAPI_KEY).trim();
+
   const p = url.searchParams;
   for (const key of ['origin', 'destination', 'departureDate']) {
     if (!p.get(key)) throw new Error(`Missing required parameter: ${key}`);
@@ -112,7 +117,7 @@ async function handleSearch(url, env, ctx, origin) {
   const roundTrip = Boolean(p.get('returnDate'));
   const q = new URLSearchParams({
     engine: 'google_flights',
-    api_key: env.SERPAPI_KEY,
+    api_key: apiKey,
     departure_id: p.get('origin'),
     arrival_id: p.get('destination'),
     outbound_date: p.get('departureDate'),
@@ -158,10 +163,17 @@ async function handleSearch(url, env, ctx, origin) {
   catch { throw new Error('SerpApi returned something that was not JSON.'); }
 
   if (data.error) {
-    // Quota exhaustion is the expected failure, so name it clearly.
-    throw new Error(/run out|limit|exceeded/i.test(data.error)
-      ? `Monthly fare-lookup allowance used up. ${data.error}`
-      : data.error);
+    // Name the two failures that actually happen, rather than passing through
+    // a message that doesn't say what to do about it.
+    if (/run out|limit|exceeded/i.test(data.error)) {
+      throw new Error(`Monthly fare-lookup allowance used up. ${data.error}`);
+    }
+    if (/invalid api key/i.test(data.error)) {
+      throw new Error('SerpApi rejected the stored key. Re-run worker/deploy.ps1 and ' +
+                      'choose "new" to replace it, checking it against ' +
+                      'https://serpapi.com/manage-api-key');
+    }
+    throw new Error(data.error);
   }
 
   const payload = JSON.stringify({ offers: normalize(data) });

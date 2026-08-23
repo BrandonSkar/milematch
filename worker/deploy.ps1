@@ -23,11 +23,35 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
+# PowerShell 5.1 still defaults to TLS 1.0 for outbound calls, which modern
+# hosts refuse outright.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 function Read-Secret($label) {
     $secure = Read-Host -Prompt $label -AsSecureString
     $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try   { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+}
+
+# Check the key against SerpApi BEFORE storing it. Finding out it was wrong
+# only after a deploy, from a 401 buried in a proxy error, wastes everyone's
+# time. /account does not consume a search.
+function Test-SerpKey($key) {
+    if (-not $key) { return $false }
+    try {
+        $acct = Invoke-RestMethod -Uri "https://serpapi.com/account?api_key=$key" -TimeoutSec 20
+        $used = $acct.this_month_usage
+        $left = $acct.total_searches_left
+        Write-Host "  Key accepted." -ForegroundColor Green
+        if ($null -ne $left) { Write-Host "  Searches left this month: $left  (used $used)" }
+        return $true
+    } catch {
+        Write-Host "  SerpApi rejected that key." -ForegroundColor Red
+        Write-Host "  Copy it from https://serpapi.com/manage-api-key - it is the long"
+        Write-Host "  hex string under 'Your Private API Key', roughly 64 characters."
+        return $false
+    }
 }
 
 Write-Host ""
@@ -74,21 +98,30 @@ if ($authenticated) {
 # Don't make someone re-paste a key that is already stored - this script gets
 # re-run after fixable failures like a missing workers.dev subdomain.
 $existingSecrets = npx --yes wrangler secret list 2>&1 | Out-String
+$needKey = $true
+
 if ($existingSecrets -match 'SERPAPI_KEY') {
     Write-Host ""
-    Write-Host "SerpApi key is already stored on this worker." -ForegroundColor Green
+    Write-Host "A SerpApi key is already stored on this worker." -ForegroundColor Green
+    Write-Host "(If searches are failing with 'Invalid API key', replace it.)"
     $replace = Read-Host "  Press Enter to keep it, or type 'new' to replace"
-    if ($replace -eq 'new') {
-        $serpKey = Read-Secret "  New API key"
-        if (-not $serpKey) { throw "A SerpApi key is required." }
-        Write-Host "Storing the secret on the worker..."
-        $serpKey | npx --yes wrangler secret put SERPAPI_KEY
-    }
-} else {
+    if ($replace -ne 'new') { $needKey = $false }
+}
+
+if ($needKey) {
     Write-Host ""
-    Write-Host "SerpApi key (from step 3 above)."
-    $serpKey = Read-Secret "  API key"
-    if (-not $serpKey) { throw "A SerpApi key is required." }
+    Write-Host "SerpApi key - the long hex string from https://serpapi.com/manage-api-key"
+    Write-Host "Nothing appears as you paste. That is deliberate; paste and press Enter."
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $serpKey = (Read-Secret "  API key").Trim()
+        if (-not $serpKey) {
+            Write-Host "  Nothing was entered. If Ctrl+V does nothing, try right-click to paste." -ForegroundColor Yellow
+            continue
+        }
+        Write-Host "  Checking the key with SerpApi..."
+        if (Test-SerpKey $serpKey) { break }
+        if ($attempt -eq 3) { throw "Could not verify a SerpApi key after 3 attempts." }
+    }
 
     Write-Host ""
     Write-Host "Storing the secret on the worker..."
