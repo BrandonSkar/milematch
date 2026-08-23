@@ -17,8 +17,8 @@ function loadPB() {
   };
   ctx.window = ctx;
   vm.createContext(ctx);
-  ['data/airports.js', 'data/programs.js', 'data/charts.js', 'data/cards.js',
-   'js/engine.js', 'js/flights.js']
+  ['data/config.js', 'data/airports.js', 'data/programs.js', 'data/charts.js',
+   'data/cards.js', 'js/engine.js', 'js/flights.js']
     .forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   ctx.PB.loadAirports();
   return ctx.PB;
@@ -508,6 +508,54 @@ test('deep link URLs are safely encoded', () => {
   // base64url only: no +, /, or = that would break the query string.
   const tfs = /tfs=([^&]+)/.exec(url)[1];
   assert.match(tfs, /^[A-Za-z0-9_-]+$/);
+});
+
+/* ── Shared vs personal fare proxy ─────────────────────────── */
+
+test('a personal worker URL overrides the shared one', () => {
+  const original = PB.CONFIG.sharedProxyUrl;
+  PB.CONFIG.sharedProxyUrl = 'https://shared.example.workers.dev';
+  try {
+    const settings = { proxyUrl: 'https://mine.example.workers.dev' };
+    assert.strictEqual(PB.flights.proxyUrl(settings), 'https://mine.example.workers.dev');
+    assert.strictEqual(PB.flights.usingSharedProxy(settings), false);
+  } finally {
+    PB.CONFIG.sharedProxyUrl = original;
+  }
+});
+
+test('with no personal URL the shared worker is used', () => {
+  const original = PB.CONFIG.sharedProxyUrl;
+  PB.CONFIG.sharedProxyUrl = 'https://shared.example.workers.dev';
+  try {
+    assert.strictEqual(PB.flights.proxyUrl({ proxyUrl: '' }), 'https://shared.example.workers.dev');
+    assert.ok(PB.flights.usingSharedProxy({ proxyUrl: '' }));
+    assert.ok(PB.flights.hasProxy({ proxyUrl: '' }));
+  } finally {
+    PB.CONFIG.sharedProxyUrl = original;
+  }
+});
+
+test('with neither configured there is no proxy at all', () => {
+  const original = PB.CONFIG.sharedProxyUrl;
+  PB.CONFIG.sharedProxyUrl = '';
+  try {
+    assert.strictEqual(PB.flights.proxyUrl({ proxyUrl: '' }), '');
+    assert.strictEqual(PB.flights.hasProxy({ proxyUrl: '' }), false);
+    assert.strictEqual(PB.flights.usingSharedProxy({ proxyUrl: '' }), false);
+  } finally {
+    PB.CONFIG.sharedProxyUrl = original;
+  }
+});
+
+test('whitespace-only settings do not count as a configured proxy', () => {
+  const original = PB.CONFIG.sharedProxyUrl;
+  PB.CONFIG.sharedProxyUrl = '';
+  try {
+    assert.strictEqual(PB.flights.hasProxy({ proxyUrl: '   ' }), false);
+  } finally {
+    PB.CONFIG.sharedProxyUrl = original;
+  }
 });
 
 /* ── Data integrity ────────────────────────────────────────── */

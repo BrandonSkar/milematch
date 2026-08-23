@@ -20,10 +20,53 @@
 
 let tokenCache = { value: null, expiresAt: 0 };
 
+/* Best-effort per-IP rate limiting.
+ *
+ * This lives in isolate memory, so it resets when Cloudflare recycles the
+ * isolate and is not shared across colos. It will not stop a determined,
+ * distributed abuser — it exists to cap a runaway script or someone hammering
+ * the endpoint from one machine, which is the realistic failure mode when the
+ * URL is baked into a public page. Anything stronger needs KV or Durable
+ * Objects, which is more machinery than this deserves. */
+const RATE = { windowMs: 60_000, maxPerWindow: 40 };
+const hits = new Map();
+
+function rateLimited(ip) {
+  if (!ip) return false;
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter((t) => now - t < RATE.windowMs);
+  recent.push(now);
+  hits.set(ip, recent);
+
+  // Keep the map from growing without bound across a long-lived isolate.
+  if (hits.size > 5000) {
+    for (const [key, times] of hits) {
+      if (!times.length || now - times[times.length - 1] > RATE.windowMs) hits.delete(key);
+    }
+  }
+  return recent.length > RATE.maxPerWindow;
+}
+
+/* CORS response headers are advisory — a browser honours them, curl does not.
+ * So when an allowlist is configured we also REJECT mismatched origins here,
+ * server-side. That still cannot make a public endpoint private; it stops
+ * other websites embedding this worker and spending the Amadeus quota. */
+function originAllowed(request, env) {
+  const allowed = env.ALLOWED_ORIGIN || '*';
+  if (allowed === '*') return true;
+  const origin = request.headers.get('Origin');
+  if (!origin) return false;               // non-browser caller
+  return allowed.split(',').map((s) => s.trim()).includes(origin);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const origin = env.ALLOWED_ORIGIN || '*';
+    const configured = env.ALLOWED_ORIGIN || '*';
+    // Echo back the caller's origin when it's on the allowlist.
+    const reqOrigin = request.headers.get('Origin');
+    const origin = configured === '*' ? '*'
+      : (originAllowed(request, env) ? reqOrigin : configured.split(',')[0].trim());
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors(origin) });
@@ -33,11 +76,20 @@ export default {
       return json({
         ok: true,
         credentials: Boolean(env.AMADEUS_CLIENT_ID && env.AMADEUS_CLIENT_SECRET),
-        host: env.AMADEUS_HOST || 'test.api.amadeus.com'
+        host: env.AMADEUS_HOST || 'test.api.amadeus.com',
+        originLocked: configured !== '*'
       }, 200, origin);
     }
 
     if (url.pathname === '/search') {
+      if (!originAllowed(request, env)) {
+        return json({ error: 'This fare lookup only serves its own site.' }, 403, origin);
+      }
+      if (rateLimited(request.headers.get('CF-Connecting-IP'))) {
+        return json({
+          error: 'Too many searches in a short period. Wait a minute and try again.'
+        }, 429, origin);
+      }
       try {
         return await handleSearch(url, env, origin);
       } catch (err) {

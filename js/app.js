@@ -205,7 +205,9 @@
     if (mode === 'live') {
       var hint = $('#liveFareHint');
       if (PB.flights.hasProxy(state.settings)) {
-        hint.textContent = 'Fares come from Amadeus through your worker at ' + state.settings.proxyUrl;
+        hint.textContent = PB.flights.usingSharedProxy(state.settings)
+          ? (PB.CONFIG.sharedProxyNote || 'Using the shared fare lookup.')
+          : 'Fares come from Amadeus through your worker at ' + PB.flights.proxyUrl(state.settings);
         hint.classList.remove('warn');
       } else {
         hint.innerHTML = 'No worker URL configured yet. Add one under <b>Settings</b>, or switch back to entering the price yourself.';
@@ -926,8 +928,21 @@
       applyFareSource(readForm().fareSource);
     });
 
+    /* Make it obvious when a shared worker is already covering you, so nobody
+     * goes hunting for a setup step they don't need. */
+    if (PB.CONFIG && (PB.CONFIG.sharedProxyUrl || '').trim()) {
+      proxy.placeholder = 'Using the shared lookup — leave empty unless you have your own';
+      var banner = document.createElement('p');
+      banner.className = 'hint';
+      banner.style.marginTop = '.5rem';
+      banner.innerHTML = '<b>Live search is already set up for this site.</b> ' +
+        esc(PB.CONFIG.sharedProxyNote || '') +
+        ' You only need a worker URL here if you\'d rather use your own Amadeus quota.';
+      proxy.parentElement.parentElement.appendChild(banner);
+    }
+
     $('#testProxy').addEventListener('click', function () {
-      var url = proxy.value.trim();
+      var url = proxy.value.trim() || PB.flights.proxyUrl(state.settings);
       var status = $('#proxyStatus');
       if (!url) { status.textContent = 'Enter a URL first.'; return; }
       status.textContent = 'Testing…';

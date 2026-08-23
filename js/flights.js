@@ -18,13 +18,27 @@ window.PB = window.PB || {};
 
   PB.flights = {};
 
+  /* A personal Settings entry wins; otherwise fall back to the shared worker
+   * baked into data/config.js so visitors get live fares with no setup. */
+  PB.flights.proxyUrl = function (settings) {
+    var own = settings && settings.proxyUrl && settings.proxyUrl.trim();
+    if (own) return own;
+    var shared = (PB.CONFIG && PB.CONFIG.sharedProxyUrl || '').trim();
+    return shared || '';
+  };
+
+  PB.flights.usingSharedProxy = function (settings) {
+    var own = settings && settings.proxyUrl && settings.proxyUrl.trim();
+    return !own && !!(PB.CONFIG && PB.CONFIG.sharedProxyUrl || '').trim();
+  };
+
   PB.flights.hasProxy = function (settings) {
-    return !!(settings && settings.proxyUrl && settings.proxyUrl.trim());
+    return !!PB.flights.proxyUrl(settings);
   };
 
   /** Live search through the Worker proxy. */
   PB.flights.searchLive = function (q, settings) {
-    var base = settings.proxyUrl.replace(/\/+$/, '');
+    var base = PB.flights.proxyUrl(settings).replace(/\/+$/, '');
     var params = new URLSearchParams({
       origin: q.from,
       destination: q.to,

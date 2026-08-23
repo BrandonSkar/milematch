@@ -8,9 +8,15 @@ compatibility_date = "2024-11-01"
 # Amadeus dashboard requires a card on file before it will enable production.
 AMADEUS_HOST = "test.api.amadeus.com"
 
-# Lock this down to your Pages origin once you know it, e.g.
-# ALLOWED_ORIGIN = "https://yourname.github.io"
-ALLOWED_ORIGIN = "*"
+# Set this to your Pages origin before you share the app. With "*" anyone can
+# point their own site at this worker and spend your Amadeus quota.
+#
+# The worker enforces this server-side (rejects mismatched Origins with 403),
+# not just via CORS headers — CORS alone is only honoured by browsers. It still
+# cannot make a public endpoint private; it stops other SITES using it.
+#
+# Comma-separated for multiple origins. Use "*" only while developing.
+ALLOWED_ORIGIN = "https://brandonskar.github.io"
 
 # Secrets are NOT set here. Run these once after `wrangler login`:
 #   npx wrangler secret put AMADEUS_CLIENT_ID
