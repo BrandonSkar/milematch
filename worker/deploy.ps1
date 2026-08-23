@@ -34,26 +34,41 @@ Write-Host ""
 Write-Host "MileMatch fare proxy deploy" -ForegroundColor Cyan
 Write-Host "---------------------------"
 
-if (-not $env:CLOUDFLARE_API_TOKEN) {
-    Write-Host "Cloudflare API token (from step 2 above)."
-    $env:CLOUDFLARE_API_TOKEN = Read-Secret "  Paste token"
-}
-if (-not $env:CLOUDFLARE_API_TOKEN) { throw "No Cloudflare token supplied." }
+# Being signed in to the Cloudflare website is NOT the same as authenticating
+# wrangler - they are separate. Accept either an existing wrangler login or an
+# API token, and check before asking for anything.
+Write-Host "Checking Cloudflare access..." -NoNewline
+$who = npx --yes wrangler whoami 2>&1 | Out-String
+$authenticated = ($who -notmatch 'not authenticated|Unable to authenticate')
 
-# Fail early with a clear message rather than a confusing error mid-deploy.
-Write-Host ""
-Write-Host "Checking the token..." -NoNewline
-try {
-    $who = npx --yes wrangler whoami 2>&1 | Out-String
-    if ($who -match 'not authenticated|Unable to authenticate|API token') {
-        Write-Host " rejected." -ForegroundColor Red
-        Write-Host $who
-        throw "Cloudflare rejected that token. Re-create it with the 'Edit Cloudflare Workers' template."
+if ($authenticated) {
+    Write-Host " already signed in." -ForegroundColor Green
+} elseif ($env:CLOUDFLARE_API_TOKEN) {
+    Write-Host " using CLOUDFLARE_API_TOKEN." -ForegroundColor Green
+} else {
+    Write-Host " not signed in." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Two ways to fix that:"
+    Write-Host "  1. Browser login  - opens Cloudflare and asks you to allow wrangler."
+    Write-Host "                      Usually works now that you are signed in there."
+    Write-Host "  2. API token      - paste one from"
+    Write-Host "                      https://dash.cloudflare.com/profile/api-tokens"
+    Write-Host "                      (Create Token -> 'Edit Cloudflare Workers')"
+    Write-Host ""
+    $choice = Read-Host "  Press Enter to try the browser login, or paste a token"
+
+    if ($choice) {
+        $env:CLOUDFLARE_API_TOKEN = $choice
+    } else {
+        Write-Host ""
+        Write-Host "Opening the browser. Approve the request, then come back here."
+        npx --yes wrangler login
+        $who = npx --yes wrangler whoami 2>&1 | Out-String
+        if ($who -match 'not authenticated|Unable to authenticate') {
+            throw "Still not signed in. Use an API token instead - re-run this script and paste one."
+        }
+        Write-Host "Signed in." -ForegroundColor Green
     }
-    Write-Host " ok." -ForegroundColor Green
-} catch {
-    Write-Host " could not verify." -ForegroundColor Yellow
-    Write-Host $_.Exception.Message
 }
 
 Write-Host ""
