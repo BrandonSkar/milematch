@@ -164,6 +164,16 @@ textarea { min-height: 110px; font-family: var(--mono); font-size: .82rem; resiz
 .seg label { display: inline-flex; align-items: center; gap: .35rem; font-size: .86rem; cursor: pointer; }
 .seg input { width: auto; }
 
+.paste-box {
+  min-height: 92px; font-family: var(--mono); font-size: .78rem;
+  margin: .5rem 0 .4rem; line-height: 1.4;
+}
+kbd {
+  font-family: var(--mono); font-size: .74em; background: var(--bg-elev-2);
+  border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: .05em .35em;
+}
+
 .input-prefix { position: relative; display: flex; align-items: center; }
 .input-prefix em { position: absolute; left: .65rem; font-style: normal; color: var(--text-dim); }
 .input-prefix input { padding-left: 1.5rem; }

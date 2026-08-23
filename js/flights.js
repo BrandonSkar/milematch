@@ -148,11 +148,128 @@ window.PB = window.PB || {};
     return { checked: minAcross('includedCheckedBags'), cabin: minAcross('includedCabinBags') };
   }
 
+  /* -------------------------------------------------------------------
+   * Paste parser.
+   *
+   * The free fare APIs are gone, and scraping Google from a server needs a
+   * headless browser (their results are rendered client-side), which cannot
+   * run on a free Worker and breaks whenever the markup shifts.
+   *
+   * But you are already looking at the results page. Select all, copy, paste
+   * here. Your browser did the browsing, as a person, which is the part that
+   * was never the problem. No API key, no quota, no server, works for anyone
+   * you share the app with.
+   *
+   * The parser is deliberately loose: it anchors on prices and reads context
+   * backwards, so it survives Google reordering things and works on text
+   * copied from Kayak, Expedia or an airline site too.
+   * ----------------------------------------------------------------- */
+
+  var AIRLINE_WORDS = [
+    'Alaska', 'American', 'Delta', 'United', 'Southwest', 'JetBlue', 'Spirit',
+    'Frontier', 'Hawaiian', 'Allegiant', 'Sun Country', 'Breeze',
+    'Air Canada', 'WestJet', 'Aeromexico', 'Volaris',
+    'British Airways', 'Virgin Atlantic', 'Lufthansa', 'Swiss', 'Austrian',
+    'Air France', 'KLM', 'Iberia', 'TAP', 'Aer Lingus', 'Finnair', 'SAS',
+    'Turkish', 'Emirates', 'Qatar', 'Etihad', 'Saudia', 'Royal Jordanian',
+    'ANA', 'Japan Airlines', 'JAL', 'Korean Air', 'Asiana', 'Singapore',
+    'Cathay', 'EVA Air', 'China Airlines', 'Thai', 'Malaysia', 'Vietnam',
+    'Qantas', 'Air New Zealand', 'Fiji Airways',
+    'Avianca', 'Copa', 'LATAM', 'Azul', 'GOL',
+    'Icelandair', 'Norwegian', 'Ryanair', 'easyJet', 'Vueling', 'Wizz',
+    'Ethiopian', 'Kenya Airways', 'South African', 'Royal Air Maroc',
+    'Air India', 'IndiGo', 'Play', 'Condor', 'Aegean', 'LOT', 'ITA'
+  ];
+
+  /**
+   * Pull flight offers out of text copied from a flight results page.
+   * @returns array of offers shaped like the live-search ones, so the same
+   *          rendering and filtering code handles both.
+   */
+  PB.flights.parsePastedFares = function (text) {
+    if (!text || !text.trim()) return [];
+
+    var lines = text.split('\n')
+      .map(function (l) { return l.replace(/\s+/g, ' ').trim(); })
+      .filter(function (l) { return l.length; });
+
+    var offers = [];
+    var seen = {};
+    var prevPriceIdx = -1;   // records are delimited by the previous fare
+
+    lines.forEach(function (line, idx) {
+      // Anchor on anything that looks like a fare. Ignore trailing decimals
+      // and reject implausible values so "$5" or a phone number isn't a fare.
+      var m = /\$\s?([\d][\d,]{1,6})(?:\.\d{2})?/.exec(line);
+      if (!m) return;
+      var price = parseInt(m[1].replace(/,/g, ''), 10);
+      if (!(price >= 20 && price <= 40000)) return;
+
+      // Ancillary charges sit right next to fares and look identical.
+      if (/\b(fee|baggage|bag|seat|upgrade|deposit|credit|discount|save|off)\b/i.test(line)) {
+        return;
+      }
+
+      /* Context is only the lines since the PREVIOUS fare. Without this bound
+       * a record inherits its neighbour's details — one entry's layover time
+       * became the next entry's flight duration, and two Kayak rows merged
+       * into one airline list. */
+      var start = prevPriceIdx + 1;
+      var window = lines.slice(start, idx + 1).join(' | ');
+      prevPriceIdx = idx;
+
+      var carriers = AIRLINE_WORDS.filter(function (name) {
+        return new RegExp('\\b' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(window);
+      });
+
+      var stops = null;
+      if (/\bnonstop\b|\bdirect\b/i.test(window)) stops = 0;
+      else {
+        var sm = /(\d+)\s*stop/i.exec(window);
+        if (sm) stops = parseInt(sm[1], 10);
+      }
+
+      var dm = /(\d+)\s*hr\s*(?:(\d+)\s*min)?/i.exec(window);
+      var duration = dm ? (dm[1] + 'h' + (dm[2] ? ' ' + dm[2] + 'm' : '')) : '';
+
+      // Google repeats the same itinerary in several places; collapse them.
+      var key = price + '|' + carriers.join(',') + '|' + stops;
+      if (seen[key]) return;
+      seen[key] = true;
+
+      offers.push({
+        id: 'paste-' + offers.length,
+        price: price,
+        currency: 'USD',
+        carriers: carriers.length ? carriers : ['Unknown airline'],
+        carrierCodes: carriers.map(codeFor).filter(Boolean),
+        // Nothing in copied text says what the fare includes.
+        bags: { checked: null, cabin: null },
+        itineraries: [],
+        stops: stops == null ? null : stops,
+        durationText: duration,
+        fromPaste: true
+      });
+    });
+
+    offers.sort(function (a, b) { return a.price - b.price; });
+    return offers;
+  };
+
+  function codeFor(name) {
+    var hit = (PB.POPULAR_AIRLINES || []).filter(function (a) {
+      return a.name.toLowerCase() === name.toLowerCase();
+    })[0];
+    return hit ? hit.code : null;
+  }
+
   /** Client-side filters for things Amadeus can't express as query params. */
   PB.flights.applyFilters = function (offers, filters) {
     filters = filters || {};
     return offers.filter(function (o) {
-      if (filters.nonStop && o.stops !== 0) return false;
+      // Same rule as baggage: unknown never silently fails a filter. Pasted
+      // text often doesn't say how many stops a fare has.
+      if (filters.nonStop && o.stops !== null && o.stops !== 0) return false;
       // Unknown baggage never silently fails the filter — see baggageOf().
       if (filters.freeCarryOn && o.bags.cabin !== null && o.bags.cabin < 1) return false;
       if (filters.freeChecked && o.bags.checked !== null && o.bags.checked < 1) return false;

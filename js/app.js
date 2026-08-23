@@ -191,6 +191,28 @@
     });
     $('#airlineInput').addEventListener('input', updateFiltersNote);
 
+    /* Parse as you paste, so the fares appear without pressing anything. */
+    $('#pasteInput').addEventListener('input', function () {
+      var parsed = PB.flights.parsePastedFares(this.value);
+      var status = $('#pasteStatus');
+
+      if (!this.value.trim()) { status.textContent = ''; status.classList.remove('warn'); return; }
+
+      if (!parsed.length) {
+        status.textContent = 'No prices found in that text. Make sure you copied the ' +
+                             'results list itself, including the dollar amounts.';
+        status.classList.add('warn');
+        return;
+      }
+
+      status.textContent = 'Found ' + parsed.length + ' fare' + (parsed.length > 1 ? 's' : '') +
+                           ', cheapest ' + PB.fmt.money(parsed[0].price) + '.';
+      status.classList.remove('warn');
+
+      liveOffers = parsed;
+      selectedOfferId = parsed[0].id;
+    });
+
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       runSearch();
@@ -201,6 +223,7 @@
     $('#manualFare').hidden   = mode !== 'manual';
     $('#liveFare').hidden     = mode !== 'live';
     $('#estimateFare').hidden = mode !== 'estimate';
+    $('#pasteFare').hidden    = mode !== 'paste';
 
     if (mode === 'live') {
       var hint = $('#liveFareHint');
@@ -242,19 +265,21 @@
    * every field that affects it, so the link can never go stale. */
   function refreshExternalLinks() {
     var q = readForm();
-    var link = $('#gfLink');
-    if (!link) return;
+    var links = [$('#gfLink'), $('#gfLinkPaste')].filter(Boolean);
+    if (!links.length) return;
 
-    if (q.from && q.to) {
-      link.href = PB.flights.googleFlightsUrl(q);
-      link.removeAttribute('aria-disabled');
-      link.title = q.date
-        ? 'Search ' + q.from + ' → ' + q.to + ' on ' + q.date + (q.roundTrip && q.returnDate ? ', returning ' + q.returnDate : '')
-        : 'Pick a departure date for an exact search';
-    } else {
-      link.href = 'https://www.google.com/travel/flights';
-      link.title = 'Enter both airports for a direct search';
-    }
+    links.forEach(function (link) {
+      if (q.from && q.to) {
+        link.href = PB.flights.googleFlightsUrl(q);
+        link.removeAttribute('aria-disabled');
+        link.title = q.date
+          ? 'Search ' + q.from + ' → ' + q.to + ' on ' + q.date + (q.roundTrip && q.returnDate ? ', returning ' + q.returnDate : '')
+          : 'Pick a departure date for an exact search';
+      } else {
+        link.href = 'https://www.google.com/travel/flights';
+        link.title = 'Enter both airports for a direct search';
+      }
+    });
   }
 
   function readForm() {
@@ -343,12 +368,13 @@
     var note = $('#filtersNote');
     if (!on.length) { note.textContent = ''; note.classList.remove('warn'); return; }
 
-    if (q.fareSource === 'live') {
-      note.textContent = 'Filtering live fares by: ' + on.join(', ') + '.';
+    // Pasted fares are real flights too, so the filters apply there as well.
+    if (q.fareSource === 'live' || q.fareSource === 'paste') {
+      note.textContent = 'Filtering by: ' + on.join(', ') + '.';
       note.classList.remove('warn');
     } else {
-      note.innerHTML = 'These filters need real flights to filter. Switch the fare source to ' +
-        '<b>Live search</b> — otherwise they are ignored.';
+      note.innerHTML = 'These filters need a list of flights. Use <b>Paste results</b> ' +
+        '— otherwise they are ignored.';
       note.classList.add('warn');
     }
   }
@@ -380,7 +406,7 @@
       if (extra.length) $('#airlineInput').value = extra.join(', ');
     }
 
-    var mode = (state.settings && state.settings.fareSource) || 'manual';
+    var mode = (state.settings && state.settings.fareSource) || 'paste';
     var radio = $$('input[name=fareSource]').filter(function (r) { return r.value === mode; })[0];
     if (radio) radio.checked = true;
     applyFareSource(mode);
@@ -440,6 +466,17 @@
         setStatus('Live search failed: ' + esc(err.message) +
           '<br><small>Check the worker URL in Settings, or switch to entering the price yourself.</small>', 'err');
       });
+      return;
+    }
+
+    if (q.fareSource === 'paste') {
+      liveOffers = PB.flights.parsePastedFares($('#pasteInput').value);
+      if (!liveOffers.length) {
+        setStatus('Paste the copied flight results first — the app reads the prices out of them.', 'err');
+        return;
+      }
+      setStatus('');
+      applyOfferFilters();
       return;
     }
 

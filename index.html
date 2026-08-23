@@ -123,9 +123,22 @@
     <fieldset class="fare-source">
       <legend>Cash price to compare against</legend>
       <div class="seg">
-        <label><input type="radio" name="fareSource" value="live"> Live search</label>
-        <label><input type="radio" name="fareSource" value="manual" checked> I'll enter it</label>
+        <label><input type="radio" name="fareSource" value="paste" checked> Paste results</label>
+        <label><input type="radio" name="fareSource" value="manual"> Type one price</label>
         <label><input type="radio" name="fareSource" value="estimate"> Rough estimate</label>
+        <label><input type="radio" name="fareSource" value="live"> Live search</label>
+      </div>
+
+      <div id="pasteFare" class="fare-mode">
+        <p class="hint">
+          Open <a id="gfLinkPaste" href="https://www.google.com/travel/flights" target="_blank" rel="noopener">Google Flights</a>
+          (your route and dates are already in the link), select the results with
+          <kbd>Ctrl</kbd>+<kbd>A</kbd>, copy, and paste below. Prices, airlines and stops
+          are read out automatically — no account, no API key.
+        </p>
+        <textarea id="pasteInput" class="paste-box"
+                  placeholder="Paste the copied flight results here…"></textarea>
+        <p class="hint" id="pasteStatus"></p>
       </div>
 
       <div id="manualFare" class="fare-mode">
@@ -158,7 +171,7 @@
 
   <div id="searchStatus" class="status" hidden></div>
   <div id="offersWrap" hidden>
-    <h2 class="section-title">Live fares <small>pick one to price it in points</small></h2>
+    <h2 class="section-title">Flights found <small>pick one to price it in points</small></h2>
     <div id="offers" class="offers"></div>
   </div>
   <div id="results"></div>

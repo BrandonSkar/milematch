@@ -284,6 +284,8 @@ test('a full search renders ranked results', maybe, async () => {
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     };
+    // Default fare source is now "paste"; this test drives the typed-price path.
+    document.querySelector('input[name=fareSource][value=manual]').click();
     set('#bal-C1', 30000);
     set('#fromInput', 'SEA'); set('#toInput', 'SNA');
     set('#cabinInput', 'y'); set('#cashInput', 389);
@@ -329,12 +331,74 @@ test('results lead with one plain answer and fold the rest away', maybe, async (
   assert.ok(r.collapsedRows > 3, 'the rest should start collapsed, not all expanded');
 });
 
-test('bag and airline filters are marked inactive outside live mode', maybe, async () => {
+test('pasting flight results produces pickable offers and prices them', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    // Reset filters left on by earlier tests.
+    ['#nonStopInput','#carryOnInput','#checkedBagInput'].forEach(s => {
+      const el = document.querySelector(s);
+      if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change',{bubbles:true})); }
+    });
+    document.querySelectorAll('#airlineChips .chip-toggle.is-on').forEach(b => b.click());
+
+    document.querySelector('input[name=fareSource][value=paste]').click();
+    set('#bal-C1', 200000);
+    set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
+    set('#pasteInput', [
+      'Alaska', '8 hr 20 min', 'Nonstop', '$298', 'round trip',
+      'Delta', '9 hr 10 min', '1 stop', '$264', 'round trip'
+    ].join(String.fromCharCode(10)));
+
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+
+    return {
+      status: document.querySelector('#pasteStatus').textContent,
+      offersShown: document.querySelectorAll('#offers .offer').length,
+      offersVisible: !document.querySelector('#offersWrap').hidden,
+      results: document.querySelectorAll('#results .result').length,
+      headline: !!document.querySelector('.headline')
+    };
+  })()`);
+
+  assert.match(r.status, /Found 2 fares/);
+  assert.strictEqual(r.offersShown, 2, 'both pasted fares should be selectable');
+  assert.ok(r.offersVisible);
+  assert.ok(r.results > 10, 'the cheapest pasted fare should be priced across programs');
+  assert.ok(r.headline);
+});
+
+test('nonstop filter narrows pasted offers', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const cb = document.querySelector('#nonStopInput');
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    return {
+      offersShown: document.querySelectorAll('#offers .offer').length,
+      note: document.querySelector('#filtersNote').textContent
+    };
+  })()`);
+
+  assert.strictEqual(r.offersShown, 1, 'only the nonstop fare should remain');
+  assert.match(r.note, /Filtering by/i);
+  assert.doesNotMatch(r.note, /need a list of flights/i);
+});
+
+test('filters are marked inactive when there is no flight list to filter', maybe, async () => {
   const note = await evaluate(`(() => {
     const cb = document.querySelector('#nonStopInput');
+    if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event('change',{bubbles:true})); }
+    document.querySelector('input[name=fareSource][value=manual]').click();
     cb.checked = true;
     cb.dispatchEvent(new Event('change', { bubbles: true }));
     return document.querySelector('#filtersNote').textContent;
   })()`);
-  assert.match(note, /Live search/i, 'should say the filters need live fares');
+  // Typing a single price gives nothing to filter, so the note must say so.
+  assert.match(note, /need a list of flights/i);
+  assert.match(note, /Paste results/i, 'should point at the mode that does work');
 });

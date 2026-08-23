@@ -14,7 +14,7 @@ window.PB = window.PB || {};
     customCards: [],       // user-defined cards
     settings: {
       proxyUrl: '',
-      fareSource: 'manual', // 'live' | 'manual' | 'estimate'
+      fareSource: 'paste',  // 'paste' | 'manual' | 'estimate' | 'live'
       hideUnaffordable: false
     },
     lastSearch: {

@@ -510,6 +510,143 @@ test('deep link URLs are safely encoded', () => {
   assert.match(tfs, /^[A-Za-z0-9_-]+$/);
 });
 
+/* ── Paste parser ──────────────────────────────────────────── */
+
+const GOOGLE_PASTE = `
+Best departing flights
+7:00 AM – 3:20 PM
+Alaska
+8 hr 20 min
+SEA–JFK
+Nonstop
+$298
+round trip
+6:05 AM – 6:15 PM
+Delta
+9 hr 10 min
+SEA–JFK
+1 stop
+1 hr 5 min SLC
+$264
+round trip
+10:30 PM – 12:45 PM
+United
+11 hr 15 min
+SEA–JFK
+1 stop
+2 hr 30 min DEN
+$241
+round trip
+5:45 AM – 2:05 PM
+JetBlue
+8 hr 20 min
+SEA–JFK
+Nonstop
+$312
+round trip
+`;
+
+test('pasted results parse into sorted offers', () => {
+  const offers = PB.flights.parsePastedFares(GOOGLE_PASTE);
+  assert.strictEqual(offers.length, 4);
+  assert.deepStrictEqual([...offers.map((o) => o.price)], [241, 264, 298, 312]);
+});
+
+test('each pasted offer keeps its OWN airline, stops and duration', () => {
+  const byPrice = {};
+  PB.flights.parsePastedFares(GOOGLE_PASTE).forEach((o) => { byPrice[o.price] = o; });
+
+  assert.deepStrictEqual([...byPrice[298].carriers], ['Alaska']);
+  assert.strictEqual(byPrice[298].stops, 0);
+  assert.strictEqual(byPrice[298].durationText, '8h 20m');
+
+  assert.deepStrictEqual([...byPrice[241].carriers], ['United']);
+  assert.strictEqual(byPrice[241].stops, 1);
+
+  // Regression: JetBlue used to inherit United's "2 hr 30 min" layover as its
+  // flight time, because the context window ran past the previous fare.
+  assert.strictEqual(byPrice[312].durationText, '8h 20m');
+  assert.deepStrictEqual([...byPrice[312].carriers], ['JetBlue']);
+  assert.strictEqual(byPrice[312].stops, 0);
+});
+
+test('adjacent records do not merge their airlines', () => {
+  const offers = PB.flights.parsePastedFares(`
+Alaska Airlines
+Nonstop  6h 05m
+SEA - ORD
+$189
+American Airlines
+1 stop  8h 40m
+SEA - ORD
+$164
+`);
+  assert.strictEqual(offers.length, 2);
+  const byPrice = {};
+  offers.forEach((o) => { byPrice[o.price] = o; });
+  assert.deepStrictEqual([...byPrice[189].carriers], ['Alaska']);
+  assert.deepStrictEqual([...byPrice[164].carriers], ['American']);
+  assert.strictEqual(byPrice[189].stops, 0);
+  assert.strictEqual(byPrice[164].stops, 1);
+});
+
+test('ancillary charges and junk are not treated as fares', () => {
+  const offers = PB.flights.parsePastedFares(`
+Call us at $5 for details
+Baggage fee $35
+Seat upgrade $89
+Alaska
+Nonstop
+6 hr
+$418
+round trip
+`);
+  assert.deepStrictEqual([...offers.map((o) => o.price)], [418]);
+});
+
+test('text with no prices yields nothing rather than throwing', () => {
+  assert.deepStrictEqual([...PB.flights.parsePastedFares('Track prices\nAbout these results')], []);
+  assert.deepStrictEqual([...PB.flights.parsePastedFares('')], []);
+  assert.deepStrictEqual([...PB.flights.parsePastedFares(null)], []);
+});
+
+test('four-figure fares with commas parse correctly', () => {
+  const offers = PB.flights.parsePastedFares(`
+British Airways
+Nonstop
+9 hr 15 min
+$2,480
+round trip
+`);
+  assert.strictEqual(offers.length, 1);
+  assert.strictEqual(offers[0].price, 2480);
+});
+
+test('codeshares keep every operating carrier', () => {
+  const offers = PB.flights.parsePastedFares(`
+Air France, Delta
+1 stop
+13 hr 5 min
+$2,150
+`);
+  assert.strictEqual(offers[0].carriers.length, 2);
+  assert.ok(offers[0].carriers.includes('Air France'));
+  assert.ok(offers[0].carriers.includes('Delta'));
+});
+
+test('filters apply to pasted offers, and unknowns never fail silently', () => {
+  const offers = PB.flights.parsePastedFares(GOOGLE_PASTE);
+  const nonstop = PB.flights.applyFilters(offers, { nonStop: true });
+  assert.deepStrictEqual([...nonstop.map((o) => o.price)], [298, 312]);
+
+  // Pasted text never reports baggage, so a bag filter must not wipe the list.
+  const withBags = PB.flights.applyFilters(offers, { freeCarryOn: true, freeChecked: true });
+  assert.strictEqual(withBags.length, offers.length);
+
+  const onlyAlaska = PB.flights.applyFilters(offers, { airlines: ['AS'] });
+  assert.deepStrictEqual([...onlyAlaska.map((o) => o.price)], [298]);
+});
+
 /* ── Shared vs personal fare proxy ─────────────────────────── */
 
 test('a personal worker URL overrides the shared one', () => {
