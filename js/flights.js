@@ -44,9 +44,8 @@ window.PB = window.PB || {};
       destination: q.to,
       departureDate: q.date,
       adults: String(q.passengers || 1),
-      travelClass: PB.flights.amadeusCabin(q.cabin),
-      currencyCode: 'USD',
-      max: '20'
+      travelClass: PB.flights.cabinCode(q.cabin),
+      currencyCode: 'USD'
     });
     if (q.roundTrip && q.returnDate) params.set('returnDate', q.returnDate);
     if (q.nonStop) params.set('nonStop', 'true');
@@ -66,87 +65,16 @@ window.PB = window.PB || {};
       }
       return r.json();
     }).then(function (json) {
-      return PB.flights.normalizeAmadeus(json);
+      // The worker normalises provider quirks, so the browser just reads them.
+      return (json && json.offers) || [];
     });
   };
 
-  PB.flights.amadeusCabin = function (cabin) {
-    return { y: 'ECONOMY', w: 'PREMIUM_ECONOMY', j: 'BUSINESS', f: 'FIRST' }[cabin] || 'ECONOMY';
+  /* SerpApi's Google Flights travel_class: 1 economy, 2 premium economy,
+   * 3 business, 4 first. */
+  PB.flights.cabinCode = function (cabin) {
+    return { y: '1', w: '2', j: '3', f: '4' }[cabin] || '1';
   };
-
-  /** Reduce an Amadeus Flight Offers Search response to what we need. */
-  PB.flights.normalizeAmadeus = function (json) {
-    var dict = (json.dictionaries && json.dictionaries.carriers) || {};
-    var offers = (json.data || []).map(function (o) {
-      var itineraries = (o.itineraries || []).map(function (it) {
-        var segs = (it.segments || []).map(function (s) {
-          return {
-            from: s.departure.iataCode,
-            to: s.arrival.iataCode,
-            depart: s.departure.at,
-            arrive: s.arrival.at,
-            carrier: s.carrierCode,
-            carrierName: dict[s.carrierCode] || s.carrierCode,
-            number: s.number,
-            aircraft: s.aircraft && s.aircraft.code
-          };
-        });
-        return { duration: it.duration, segments: segs, stops: Math.max(0, segs.length - 1) };
-      });
-      var carriers = {}, codes = {};
-      itineraries.forEach(function (it) {
-        it.segments.forEach(function (s) {
-          carriers[s.carrierName] = true;
-          codes[s.carrier] = true;
-        });
-      });
-      return {
-        id: o.id,
-        price: parseFloat(o.price.grandTotal || o.price.total),
-        currency: o.price.currency,
-        carriers: Object.keys(carriers),
-        carrierCodes: Object.keys(codes),
-        bags: baggageOf(o),
-        itineraries: itineraries,
-        stops: Math.max.apply(null, itineraries.map(function (i) { return i.stops; })),
-        durationText: itineraries.map(function (i) { return prettyDuration(i.duration); }).join(' / ')
-      };
-    });
-    offers.sort(function (a, b) { return a.price - b.price; });
-    return offers;
-  };
-
-  /* What the fare actually includes, per Amadeus.
-   *
-   * Amadeus reports baggage per traveller per segment. A fare only counts as
-   * including a bag if EVERY segment does — a basic-economy connection that
-   * allows a bag on one leg but not the other is not a "free bag" fare.
-   *
-   * Older API responses omit includedCabinBags entirely. Absent data is
-   * reported as null (unknown), never as false, so the UI can distinguish
-   * "this fare has no bag" from "the API didn't say". */
-  function baggageOf(offer) {
-    var tp = (offer.travelerPricings || [])[0];
-    if (!tp) return { checked: null, cabin: null };
-
-    var details = tp.fareDetailsBySegment || [];
-    if (!details.length) return { checked: null, cabin: null };
-
-    function minAcross(key) {
-      var seen = false, min = Infinity;
-      details.forEach(function (d) {
-        var bag = d[key];
-        if (!bag) return;
-        seen = true;
-        // Amadeus gives either a piece count or a weight allowance.
-        var qty = bag.quantity != null ? bag.quantity : (bag.weight > 0 ? 1 : 0);
-        min = Math.min(min, qty);
-      });
-      return seen ? min : null;
-    }
-
-    return { checked: minAcross('includedCheckedBags'), cabin: minAcross('includedCabinBags') };
-  }
 
   /* -------------------------------------------------------------------
    * Paste parser.
@@ -270,7 +198,9 @@ window.PB = window.PB || {};
       // Same rule as baggage: unknown never silently fails a filter. Pasted
       // text often doesn't say how many stops a fare has.
       if (filters.nonStop && o.stops !== null && o.stops !== 0) return false;
-      // Unknown baggage never silently fails the filter — see baggageOf().
+      /* Unknown baggage never silently fails the filter. Neither the worker
+       * nor pasted text can always tell what a fare includes, and hiding those
+       * fares would be worse than showing them unlabelled. */
       if (filters.freeCarryOn && o.bags.cabin !== null && o.bags.cabin < 1) return false;
       if (filters.freeChecked && o.bags.checked !== null && o.bags.checked < 1) return false;
       if (filters.airlines && filters.airlines.length) {
@@ -281,12 +211,7 @@ window.PB = window.PB || {};
     });
   };
 
-  function prettyDuration(iso) {
-    if (!iso) return '';
-    var m = /PT(?:(\d+)H)?(?:(\d+)M)?/.exec(iso);
-    if (!m) return '';
-    return (m[1] ? m[1] + 'h ' : '') + (m[2] ? m[2] + 'm' : '').trim();
-  }
+  
 
   /* -------------------------------------------------------------------
    * Rough offline fare estimate.

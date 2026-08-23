@@ -3,21 +3,22 @@ main = "worker.js"
 compatibility_date = "2024-11-01"
 
 [vars]
-# "test.api.amadeus.com" for the free sandbox (limited, partly cached data).
-# "api.amadeus.com" for real fares — still has a free monthly quota, but the
-# Amadeus dashboard requires a card on file before it will enable production.
-AMADEUS_HOST = "test.api.amadeus.com"
-
 # Set this to your Pages origin before you share the app. With "*" anyone can
-# point their own site at this worker and spend your Amadeus quota.
+# point their own site at this worker and spend your monthly search allowance.
 #
 # The worker enforces this server-side (rejects mismatched Origins with 403),
-# not just via CORS headers — CORS alone is only honoured by browsers. It still
+# not just via CORS headers - CORS alone is only honoured by browsers. It still
 # cannot make a public endpoint private; it stops other SITES using it.
 #
 # Comma-separated for multiple origins. Use "*" only while developing.
 ALLOWED_ORIGIN = "https://brandonskar.github.io"
 
-# Secrets are NOT set here. Run these once after `wrangler login`:
-#   npx wrangler secret put AMADEUS_CLIENT_ID
-#   npx wrangler secret put AMADEUS_CLIENT_SECRET
+# How long an identical search is reused before spending another SerpApi call.
+# The free tier is 250 searches/month shared by every visitor, so this is the
+# difference between the allowance lasting a month and lasting an afternoon.
+# Fares do move, so this is a trade-off rather than a free win.
+CACHE_HOURS = "6"
+
+# Secrets are NOT set here. Run once after obtaining a key:
+#   npx wrangler secret put SERPAPI_KEY
+# Free key: https://serpapi.com/users/sign_up

@@ -1,23 +1,17 @@
 /* Site-wide configuration.
  *
- * !! NOTHING TO SET HERE RIGHT NOW !!
- * This pointed at a Cloudflare worker wrapping the Amadeus Self-Service API.
- * Amadeus retired that API on 17 July 2026, so there is no provider to point
- * at. MileMatch runs on manually entered cash prices and always could — see
- * worker/README.md for the replacement options and why none of them is a free
- * drop-in.
- *
- * The machinery below still works. When a provider is wired up, set
- * `sharedProxyUrl` once and everyone who opens the site gets live fares
- * automatically — no Settings step, nothing to paste. Commit it and it is
- * permanent.
+ * Set `sharedProxyUrl` once here and everyone who opens the site gets real
+ * Google Flights results automatically — no Settings step, nothing to paste,
+ * nothing to type. Commit it and it is permanent. See worker/README.md to
+ * deploy the worker that goes here.
  *
  * !! READ THIS BEFORE YOU FILL IT IN !!
  *
- * 1. EVERY visitor shares YOUR Amadeus quota. The free tier is a monthly call
- *    allowance. Friends searching burns it; when it runs out, live search
- *    stops working for everyone until the month rolls over. The app falls back
- *    to manual price entry, so nothing breaks — it just goes quiet.
+ * 1. EVERY visitor shares YOUR SerpApi allowance — 250 searches a month on the
+ *    free tier. Friends searching burns it; when it runs out, live search stops
+ *    for everyone until the month rolls over. Nothing breaks — the app falls
+ *    back to pasting or typing a price. The worker caches identical searches
+ *    for CACHE_HOURS so repeats of the same route and date cost nothing.
  *
  * 2. This URL becomes PUBLIC. It ships in the JavaScript of a public site and
  *    sits in a public repo. Anyone who views source can call it.

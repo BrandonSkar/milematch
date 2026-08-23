@@ -1,27 +1,3 @@
-# ============================================================================
-#  DO NOT RUN YET - the API this deploys against no longer exists.
-#
-#  Amadeus paused new Self-Service registrations in March 2026 and fully
-#  decommissioned the portal on 17 July 2026, deactivating existing keys.
-#  There is no way to obtain the AMADEUS_CLIENT_ID / SECRET this asks for.
-#
-#  Kept as a working template: the Cloudflare deploy, secret handling, origin
-#  locking and rate limiting all carry over to whatever provider replaces
-#  Amadeus. See README.md for the current options.
-#
-#  Until then MileMatch works fine on manually entered cash prices.
-# ============================================================================
-if (-not $env:MILEMATCH_FORCE_DEPLOY) {
-    Write-Host ""
-    Write-Host "Amadeus Self-Service was retired on 17 July 2026 - there are no" -ForegroundColor Yellow
-    Write-Host "credentials to obtain, so this deploy cannot succeed. See README.md." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Set MILEMATCH_FORCE_DEPLOY=1 to run it anyway (e.g. after porting"
-    Write-Host "worker.js to a different provider)."
-    Write-Host ""
-    exit 1
-}
-
 # Deploys the MileMatch fare proxy without the OAuth browser dance.
 #
 # `wrangler login` needs a browser round-trip back to localhost:8976. When that
@@ -35,9 +11,10 @@ if (-not $env:MILEMATCH_FORCE_DEPLOY) {
 #   2. Make a token:           https://dash.cloudflare.com/profile/api-tokens
 #      "Create Token" -> use the "Edit Cloudflare Workers" template -> Continue
 #      -> Create Token -> copy it.
-#   3. Amadeus keys (free):    https://developers.amadeus.com
-#      Register, create an app in the Self-Service Workspace, copy the API Key
-#      and API Secret.
+#   3. SerpApi key (free):     https://serpapi.com/users/sign_up
+#      Register, then copy your key from https://serpapi.com/manage-api-key
+#      Free tier is 250 searches/month, 50/hour, shared by everyone using the
+#      site. The worker caches identical searches so repeats cost nothing.
 #   4. Run:  .\deploy.ps1
 #
 # Nothing is written to disk and no secret is echoed. Values you paste are held
@@ -80,15 +57,13 @@ try {
 }
 
 Write-Host ""
-Write-Host "Amadeus credentials (from step 3 above)."
-$amadeusId     = Read-Secret "  API Key"
-$amadeusSecret = Read-Secret "  API Secret"
-if (-not $amadeusId -or -not $amadeusSecret) { throw "Both Amadeus values are required." }
+Write-Host "SerpApi key (from step 3 above)."
+$serpKey = Read-Secret "  API key"
+if (-not $serpKey) { throw "A SerpApi key is required." }
 
 Write-Host ""
-Write-Host "Storing secrets on the worker..."
-$amadeusId     | npx --yes wrangler secret put AMADEUS_CLIENT_ID
-$amadeusSecret | npx --yes wrangler secret put AMADEUS_CLIENT_SECRET
+Write-Host "Storing the secret on the worker..."
+$serpKey | npx --yes wrangler secret put SERPAPI_KEY
 
 Write-Host ""
 Write-Host "Deploying..."
@@ -113,9 +88,9 @@ Write-Host "Checking /health..." -NoNewline
 try {
     $health = Invoke-RestMethod -Uri "$workerUrl/health" -TimeoutSec 20
     if ($health.credentials) {
-        Write-Host " ok - Amadeus credentials present." -ForegroundColor Green
+        Write-Host " ok - SerpApi key present." -ForegroundColor Green
     } else {
-        Write-Host " reachable, but Amadeus credentials are MISSING." -ForegroundColor Red
+        Write-Host " reachable, but the SerpApi key is MISSING." -ForegroundColor Red
     }
 } catch {
     Write-Host " could not reach it yet (deploys take a few seconds to propagate)." -ForegroundColor Yellow
@@ -150,4 +125,4 @@ Write-Host '    git commit -m "Point the site at the shared fare worker"'
 Write-Host '    git push'
 Write-Host ""
 Write-Host "ALLOWED_ORIGIN is already set to https://brandonskar.github.io in"
-Write-Host "wrangler.toml, so other sites cannot spend your Amadeus quota."
+Write-Host "wrangler.toml, so other sites cannot spend your search allowance."

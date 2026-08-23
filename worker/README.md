@@ -1,152 +1,131 @@
-# Live fare lookup (optional) — CURRENTLY NOT DEPLOYABLE
+# Automatic fare lookup
 
-> ## ⚠️ Amadeus Self-Service is retired
->
-> Amadeus paused new Self-Service registrations in **March 2026** and fully
-> decommissioned the portal on **17 July 2026**, deactivating existing API
-> keys. You cannot sign up, and this worker targets that dead API.
->
-> The Amadeus **Enterprise** portal still exists but needs a commercial
-> agreement and an account manager — not a route for a personal project.
->
-> **Nothing is broken.** MileMatch never depended on this. Type the cash price
-> from Google Flights (the link next to the field carries your exact route and
-> dates) and every points calculation works exactly the same. That number is
-> also more trustworthy than a sandbox fare, because you read it off a real
-> booking page.
->
-> ### If you want automatic fares anyway
->
-> | Provider | Signup | Reality check |
-> |---|---|---|
-> | **Duffel** | ~1 min, test token immediately | Test mode returns a **simulated airline**, not real fares. Live access needs verification and an agreement. |
-> | **Travelpayouts** | Free affiliate signup | Data API is **cached price trends**, not live quotes. Real-time search needs 50,000 MAU. |
-> | **Amadeus Enterprise** | Sales process | Commercial agreement required. |
->
-> There is no longer a free, self-signup API returning real live cash fares for
-> a hobby project. The code below is kept as a working template — the CORS
-> proxy, origin locking, rate limiting and token caching all still apply to
-> whatever provider replaces it. Only `handleSearch()` and
-> `normalizeAmadeus()` in `js/flights.js` need swapping.
+Deploy this once and everyone using MileMatch gets **real Google Flights
+results automatically** — no copying, no pasting, no typing a price, nothing to
+configure on their end. About five minutes, free.
+
+Without it the app still works: you paste or type a price. This just removes
+that step, which matters most on a phone.
 
 ---
 
-## Original setup notes (Amadeus — no longer possible)
+## How it gets the data
 
-The app works without this. You just type the cash price yourself, which takes
-about ten seconds on Google Flights. Set this up if you'd rather have real fares
-pulled in automatically.
+Google shut down their official flights API in 2018, and Google Flights renders
+its results client-side — so fetching the page returns an empty shell. Reading
+it needs a headless browser, which will not run on a free Cloudflare Worker.
 
-**Cost: $0.** Cloudflare Workers' free tier allows 100,000 requests/day and
-Amadeus' Self-Service tier includes a free monthly call quota.
+[SerpApi](https://serpapi.com/google-flights-api) runs that infrastructure and
+absorbs the legal exposure of scraping. We call a documented JSON endpoint.
 
-## Why a proxy is required
+**Free tier: 250 searches/month, 50/hour** — shared by everyone using your site,
+so the worker caches identical searches (see `CACHE_HOURS`).
 
-GitHub Pages serves static files only. A browser calling Amadeus directly from
-`yourname.github.io` fails for two reasons that cannot be worked around
-client-side:
+> **Amadeus is gone.** This worker previously used the Amadeus Self-Service API,
+> which was decommissioned on 17 July 2026 with existing keys deactivated. If
+> you find older instructions mentioning `AMADEUS_CLIENT_ID`, they're stale.
 
-1. **CORS** — Amadeus does not send `Access-Control-Allow-Origin` for browser
-   requests, so the browser discards the response.
-2. **Key exposure** — anything in front-end JavaScript is public. An API key
-   shipped to the browser is a published API key.
+## Why a proxy rather than calling SerpApi from the page
 
-This worker sits in between: it holds the credentials and returns only fare data.
+Two reasons, both hard blockers:
+
+1. **The key would be public.** Anything in front-end JavaScript is published.
+2. **CORS.** The browser blocks the cross-origin call regardless.
+
+The worker also adds an origin lock, per-IP rate limiting, and caching.
+
+---
 
 ## Setup
 
-### 1. Get Amadeus credentials
+### 1. Cloudflare account
 
-1. Register at <https://developers.amadeus.com> (free, no card for the sandbox).
-2. Create an app in **My Self-Service Workspace**.
-3. Copy the **API Key** and **API Secret**.
+<https://dash.cloudflare.com/sign-up> — free. **Verify the confirmation email.**
+An unverified account cannot authorise anything, which is the usual reason the
+sign-in button appears to do nothing.
 
-The **test** environment is free and instant, but its inventory is limited and
-partly cached — treat prices as illustrative. Moving to **production** gives real
-fares and keeps a free monthly quota, but Amadeus requires a card on file to
-enable it. Switch by changing `AMADEUS_HOST` in `wrangler.toml`.
+Then create a token at <https://dash.cloudflare.com/profile/api-tokens>:
+**Create Token** → **Edit Cloudflare Workers** template → Continue → Create.
 
-### 2. Deploy the worker
+### 2. SerpApi key
 
-You need a free Cloudflare account: <https://dash.cloudflare.com/sign-up>.
-**Verify the confirmation email.** An unverified account cannot authorise
-anything, which is the usual reason the sign-in button appears to do nothing.
+<https://serpapi.com/users/sign_up> — free, then copy your key from
+<https://serpapi.com/manage-api-key>.
 
-#### Recommended: API token (skips the browser flow)
-
-`npx wrangler login` needs the browser to redirect back to `localhost:8976`.
-When that round-trip fails it simply times out after two minutes with no
-useful error. A token avoids it entirely.
-
-1. Go to <https://dash.cloudflare.com/profile/api-tokens>
-2. **Create Token** → use the **Edit Cloudflare Workers** template → Continue → Create Token
-3. Copy the token, then from this `worker/` directory:
+### 3. Deploy
 
 ```powershell
+cd worker
 .\deploy.ps1
 ```
 
-It prompts for the token and your Amadeus keys, stores the secrets on the
-worker, and deploys. Nothing is written to disk and no secret is echoed.
+It prompts for both keys, stores them as Worker secrets, deploys, checks
+`/health`, and writes the resulting URL into `data/config.js` for you.
 
-Or do it by hand:
+### 4. Publish
 
 ```bash
-export CLOUDFLARE_API_TOKEN=...              # PowerShell: $env:CLOUDFLARE_API_TOKEN="..."
-npx wrangler secret put AMADEUS_CLIENT_ID
-npx wrangler secret put AMADEUS_CLIENT_SECRET
+git add data/config.js
+git commit -m "Point the site at the shared fare worker"
+git push
+```
+
+Done. Anyone opening the site now gets live fares with zero setup.
+
+#### Doing it by hand instead
+
+```bash
+export CLOUDFLARE_API_TOKEN=...      # PowerShell: $env:CLOUDFLARE_API_TOKEN="..."
+npx wrangler secret put SERPAPI_KEY
 npx wrangler deploy
 ```
 
-#### Alternative: OAuth
+`npx wrangler login` also works, but it needs a browser redirect back to
+`localhost:8976`; when that fails it times out after two minutes with no useful
+error. The token avoids it.
 
-```bash
-npx wrangler login
-```
+---
 
-If this hangs on "Timed out waiting for authorization code", the browser never
-completed the round-trip — use the token method above rather than retrying.
+## Making 250 searches last
 
-Either way, wrangler prints a URL like `https://milematch.yourname.workers.dev`.
+The allowance is shared by every visitor, so:
 
-### 3. Point the app at it
+- **Identical searches are cached** for `CACHE_HOURS` (default 6). Same route,
+  same dates, same cabin costs one search no matter how many people run it.
+  Fares do move, so this is a trade-off rather than a free win — lower it if
+  you care more about freshness than allowance.
+- **`ALLOWED_ORIGIN` is enforced server-side** with a 403, not just advertised
+  in CORS headers. CORS is honoured by browsers and ignored by curl, so on its
+  own it was decoration. This stops other *sites* spending your allowance; it
+  cannot make a public endpoint private.
+- **Per-IP rate limiting**, 20 requests/minute. Isolate-local, so it caps a
+  runaway script rather than a distributed abuser.
 
-Open the app → **Settings** → paste the worker URL → **Test connection**.
-You should see `Connected. Amadeus credentials present.`
-
-Then on the Search tab pick **Live search** as the fare source.
-
-### 4. Lock it down
-
-Once you know your Pages URL, set `ALLOWED_ORIGIN` in `wrangler.toml` to it
-(e.g. `https://yourname.github.io`) and redeploy. That stops other sites from
-burning your Amadeus quota.
+When the allowance runs out the app says so plainly and falls back to pasting
+or typing a price. Nothing breaks.
 
 ## Endpoints
 
-| Route     | Returns                                                        |
-|-----------|----------------------------------------------------------------|
-| `/health` | `{ ok, credentials, host }` — used by the Test connection button |
-| `/search` | Amadeus Flight Offers Search, passed through unmodified          |
+| Route | Returns |
+|---|---|
+| `/health` | `{ ok, credentials, provider, cacheHours, originLocked }` |
+| `/search` | `{ offers: [...] }`, already normalised for the app |
 
 `/search` parameters: `origin`, `destination`, `departureDate` (required);
-`returnDate`, `adults`, `travelClass`, `currencyCode`, `max`, `nonStop`.
+`returnDate`, `adults`, `travelClass` (1–4), `currencyCode`, `nonStop`.
 
-## Local testing
+## Testing
 
 ```bash
-npx wrangler dev
+npm run test:worker
 ```
 
-Then set the app's worker URL to `http://localhost:8787`.
+13 tests run the worker against a stubbed SerpApi — request mapping,
+normalisation, caching, the origin lock, and error handling — without spending
+any of your monthly searches.
 
-## Other providers
+## Swapping providers
 
-The app only needs *a cash price*, so swapping providers means editing
-`normalizeAmadeus()` in `js/flights.js` and the fetch in this worker:
-
-- **Travelpayouts / Aviasales** — free affiliate API, cached prices, no card.
-- **Duffel** — free sandbox; live access needs a signed agreement.
-- **seats.aero Partner API** — the only one that returns *award availability*
-  rather than cash fares. Paid, and worth it only if you want the app to confirm
-  a seat is actually open.
+If SerpApi's terms or pricing stop suiting you, only `handleSearch()` and
+`normalize()` in `worker.js` are provider-specific. The proxy, origin lock,
+rate limiting, caching, and the entire front end are unaffected.

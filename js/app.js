@@ -233,10 +233,9 @@
           : 'Fares come from Amadeus through your worker at ' + PB.flights.proxyUrl(state.settings);
         hint.classList.remove('warn');
       } else {
-        hint.innerHTML = 'Live search needs a fare provider, and the free one this was built on ' +
-          '(Amadeus Self-Service) was retired in July 2026. <b>Enter the price yourself</b> — ' +
-          'the Google Flights link carries your exact route and dates, and a real booking price ' +
-          'is more reliable than a sandbox fare anyway.';
+        hint.innerHTML = 'No fare lookup is configured yet. Deploy the worker in ' +
+          '<code>worker/</code> (about five minutes, free) and everyone using this site gets ' +
+          'real Google Flights results automatically. Until then, use <b>Paste results</b>.';
         hint.classList.add('warn');
       }
     }
