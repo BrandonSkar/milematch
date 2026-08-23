@@ -1,4 +1,37 @@
-# Live fare lookup (optional)
+# Live fare lookup (optional) — CURRENTLY NOT DEPLOYABLE
+
+> ## ⚠️ Amadeus Self-Service is retired
+>
+> Amadeus paused new Self-Service registrations in **March 2026** and fully
+> decommissioned the portal on **17 July 2026**, deactivating existing API
+> keys. You cannot sign up, and this worker targets that dead API.
+>
+> The Amadeus **Enterprise** portal still exists but needs a commercial
+> agreement and an account manager — not a route for a personal project.
+>
+> **Nothing is broken.** MileMatch never depended on this. Type the cash price
+> from Google Flights (the link next to the field carries your exact route and
+> dates) and every points calculation works exactly the same. That number is
+> also more trustworthy than a sandbox fare, because you read it off a real
+> booking page.
+>
+> ### If you want automatic fares anyway
+>
+> | Provider | Signup | Reality check |
+> |---|---|---|
+> | **Duffel** | ~1 min, test token immediately | Test mode returns a **simulated airline**, not real fares. Live access needs verification and an agreement. |
+> | **Travelpayouts** | Free affiliate signup | Data API is **cached price trends**, not live quotes. Real-time search needs 50,000 MAU. |
+> | **Amadeus Enterprise** | Sales process | Commercial agreement required. |
+>
+> There is no longer a free, self-signup API returning real live cash fares for
+> a hobby project. The code below is kept as a working template — the CORS
+> proxy, origin locking, rate limiting and token caching all still apply to
+> whatever provider replaces it. Only `handleSearch()` and
+> `normalizeAmadeus()` in `js/flights.js` need swapping.
+
+---
+
+## Original setup notes (Amadeus — no longer possible)
 
 The app works without this. You just type the cash price yourself, which takes
 about ten seconds on Google Flights. Set this up if you'd rather have real fares

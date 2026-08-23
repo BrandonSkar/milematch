@@ -1,8 +1,16 @@
 /* Site-wide configuration.
  *
- * Set `sharedProxyUrl` once here and everyone who opens the site gets live
- * fares automatically — no Settings step, nothing to paste. Commit it and it
- * is permanent.
+ * !! NOTHING TO SET HERE RIGHT NOW !!
+ * This pointed at a Cloudflare worker wrapping the Amadeus Self-Service API.
+ * Amadeus retired that API on 17 July 2026, so there is no provider to point
+ * at. MileMatch runs on manually entered cash prices and always could — see
+ * worker/README.md for the replacement options and why none of them is a free
+ * drop-in.
+ *
+ * The machinery below still works. When a provider is wired up, set
+ * `sharedProxyUrl` once and everyone who opens the site gets live fares
+ * automatically — no Settings step, nothing to paste. Commit it and it is
+ * permanent.
  *
  * !! READ THIS BEFORE YOU FILL IT IN !!
  *

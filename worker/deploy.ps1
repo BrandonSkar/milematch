@@ -1,3 +1,27 @@
+# ============================================================================
+#  DO NOT RUN YET - the API this deploys against no longer exists.
+#
+#  Amadeus paused new Self-Service registrations in March 2026 and fully
+#  decommissioned the portal on 17 July 2026, deactivating existing keys.
+#  There is no way to obtain the AMADEUS_CLIENT_ID / SECRET this asks for.
+#
+#  Kept as a working template: the Cloudflare deploy, secret handling, origin
+#  locking and rate limiting all carry over to whatever provider replaces
+#  Amadeus. See README.md for the current options.
+#
+#  Until then MileMatch works fine on manually entered cash prices.
+# ============================================================================
+if (-not $env:MILEMATCH_FORCE_DEPLOY) {
+    Write-Host ""
+    Write-Host "Amadeus Self-Service was retired on 17 July 2026 - there are no" -ForegroundColor Yellow
+    Write-Host "credentials to obtain, so this deploy cannot succeed. See README.md." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Set MILEMATCH_FORCE_DEPLOY=1 to run it anyway (e.g. after porting"
+    Write-Host "worker.js to a different provider)."
+    Write-Host ""
+    exit 1
+}
+
 # Deploys the MileMatch fare proxy without the OAuth browser dance.
 #
 # `wrangler login` needs a browser round-trip back to localhost:8976. When that
