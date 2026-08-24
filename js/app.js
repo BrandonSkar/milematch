@@ -182,7 +182,8 @@
       if (liveOffers.length) applyOfferFilters();
     });
 
-    ['#nonStopInput', '#carryOnInput', '#checkedBagInput', '#airlineInput'].forEach(function (sel) {
+    ['#nonStopInput', '#carryOnInput', '#checkedBagInput', '#airlineInput',
+     '#strictAirlinesInput'].forEach(function (sel) {
       $(sel).addEventListener('change', function () {
         updateFiltersNote();
         persistSearchForm();
@@ -302,6 +303,7 @@
       roundTrip: $('#roundTripInput').checked,
       cashPrice: parseFloat($('#cashInput').value) || null,
       nonStop: $('#nonStopInput').checked,
+      strictAirlines: $('#strictAirlinesInput').checked,
       freeCarryOn: $('#carryOnInput').checked,
       freeChecked: $('#checkedBagInput').checked,
       // Chips plus anything typed into the overflow box, de-duplicated.
@@ -346,6 +348,14 @@
       host.appendChild(btn);
     });
 
+    // Suggest codes for the long tail, rather than expecting anyone to know
+    // that Lufthansa is LH.
+    var codes = $('#airlineCodes');
+    if (codes && PB.MORE_AIRLINES) {
+      codes.textContent = 'Two-letter codes, comma separated. ' +
+        PB.MORE_AIRLINES.map(function (a) { return a.name + ' ' + a.code; }).join(' · ');
+    }
+
     renderAirlineChips();
   }
 
@@ -365,13 +375,13 @@
     if (q.freeCarryOn) on.push('free carry-on');
     if (q.freeChecked) on.push('free checked bag');
     if (q.airlines.length) {
+      var known = PB.POPULAR_AIRLINES.concat(PB.MORE_AIRLINES || []);
       var named = q.airlines.map(function (code) {
-        var hit = PB.POPULAR_AIRLINES.filter(function (a) { return a.code === code; })[0];
+        var hit = known.filter(function (a) { return a.code === code; })[0];
         return hit ? hit.name : code;
       });
-      on.push(named.length > 4
-        ? named.length + ' airlines'
-        : named.join(', '));
+      on.push((q.strictAirlines ? 'only ' : '') +
+        (named.length > 4 ? named.length + ' airlines' : named.join(', ')));
     }
 
     var note = $('#filtersNote');
@@ -404,6 +414,7 @@
     $('#roundTripInput').checked = s.roundTrip !== false;
     $('#returnInput').disabled = !$('#roundTripInput').checked;
     $('#nonStopInput').checked = !!s.nonStop;
+    $('#strictAirlinesInput').checked = !!s.strictAirlines;
     $('#carryOnInput').checked = !!s.freeCarryOn;
     $('#checkedBagInput').checked = !!s.freeChecked;
     /* Restore chips for anything in the curated list; the rest goes back into

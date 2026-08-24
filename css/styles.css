@@ -392,6 +392,9 @@ kbd {
 /* Visual break between US carriers and international ones. */
 .chip-sep { width: 100%; height: 0; }
 
+.strict-toggle { margin: .55rem 0 0; font-size: .8rem; }
+.strict-toggle b { font-weight: 700; }
+
 .airline-more { margin-top: .55rem; }
 .airline-more > summary {
   font-size: .76rem; color: var(--text-dim); cursor: pointer;

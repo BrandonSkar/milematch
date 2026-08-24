@@ -123,10 +123,16 @@
         <button type="button" id="clearAirlines" class="link-btn" hidden>Clear</button>
       </div>
       <div id="airlineChips" class="chips"></div>
+
+      <label class="toggle strict-toggle">
+        <input type="checkbox" id="strictAirlinesInput">
+        <span>Only flights <b>entirely</b> on the selected airlines</span>
+      </label>
+
       <details class="airline-more">
         <summary>Another airline not listed</summary>
-        <input id="airlineInput" placeholder="e.g. AY, LX, TP" autocomplete="off">
-        <small class="hint">Two-letter IATA codes, comma separated. Combines with the buttons above.</small>
+        <input id="airlineInput" placeholder="e.g. BA, LH, NH" autocomplete="off">
+        <small class="hint" id="airlineCodes"></small>
       </details>
     </div>
 

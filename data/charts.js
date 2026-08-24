@@ -101,34 +101,63 @@ PB.DISTANCE_CHARTS = {
 };
 
 PB.REGION_CHARTS = {
-  /* American AAdvantage — oneworld partner saver levels, one-way */
+  /* American AAdvantage — oneworld partner saver levels, one-way.
+   * Verified 2026-08-20 against the published partner chart. The North America
+   * rows below are the published figures; premium economy was low throughout
+   * and contiguous-US first was 32,500 against a real 50,000.
+   *
+   * AA calls these "starting estimates" and prices some partner awards
+   * dynamically above them, so treat these as a floor rather than a quote.
+   *
+   * Two mappings are lossy against AA's real zones and stay approximate:
+   *  - CAM: AA splits the Caribbean and Central America differently; the
+   *    South America Region 1 figures are used as the closest fit.
+   *  - SA: AA has two South America zones. Region 2 (Brazil/Argentina/Chile)
+   *    is used here as the more common long-haul case; northern South America
+   *    is cheaper in reality.
+   * The EU- rows are NOT published in this chart and remain estimates. */
   AA: {
-    'NA-NA':   { y: 12500, w: 17500, j: 25000, f: 32500  },
-    'NA-CAM':  { y: 12500, w: 17500, j: 25000, f: 32500  },
-    'NA-SA':   { y: 20000, w: 27500, j: 40000, f: 55000  },
+    'NA-NA':   { y: 12500, w: 22500, j: 25000, f: 50000  },
+    'NA-CAM':  { y: 20000, w: 27500, j: 30000, f: 55000  },
+    'NA-SA':   { y: 30000, w: 40000, j: 57500, f: 85000  },
     'NA-EU':   { y: 30000, w: 40000, j: 57500, f: 85000  },
-    'NA-ME':   { y: 40000, w: 55000, j: 70000, f: 115000 },
-    'NA-AF':   { y: 40000, w: 55000, j: 75000, f: 120000 },
-    'NA-SAS':  { y: 40000, w: 55000, j: 70000, f: 110000 },
-    'NA-NEA':  { y: 35000, w: 45000, j: 60000, f: 80000  },
-    'NA-SEA':  { y: 40000, w: 55000, j: 70000, f: 110000 },
-    'NA-OC':   { y: 40000, w: 55000, j: 80000, f: 110000 },
+    'NA-ME':   { y: 40000, w: 62500, j: 70000, f: 115000 },
+    'NA-AF':   { y: 40000, w: 65000, j: 75000, f: 120000 },
+    'NA-SAS':  { y: 40000, w: 62500, j: 70000, f: 115000 },
+    'NA-NEA':  { y: 35000, w: 50000, j: 60000, f: 80000  },
+    'NA-SEA':  { y: 37500, w: 50000, j: 70000, f: 110000 },
+    'NA-OC':   { y: 40000, w: 65000, j: 80000, f: 110000 },
     'EU-EU':   { y: 12500, w: 17500, j: 25000, f: 35000  },
     'EU-ME':   { y: 20000, w: 27500, j: 35000, f: 50000  },
     'EU-NEA':  { y: 30000, w: 40000, j: 50000, f: 70000  },
     'EU-SEA':  { y: 30000, w: 42500, j: 55000, f: 75000  }
   },
 
-  /* Alaska Mileage Plan — partner levels, one-way */
+  /* Alaska Mileage Plan — partner levels, one-way.
+   * Verified 2026-08-20. Alaska still uses a FIXED published partner chart
+   * that applies to all dates and seasons — only Alaska-operated flights are
+   * dynamic. The earlier note here claiming partner pricing had gone
+   * distance-based was wrong.
+   *
+   * Alaska publishes ranges per region. The saver (low) end is used below.
+   * Published ranges for reference:
+   *   Europe   econ 22.5-27.5k  biz 55-57.5k  first 70-90k
+   *   Asia     econ 25-30k      biz 50-60k    first 70-85k
+   *   ME       econ 32.5k       biz 62.5-70k  first 100k
+   *   Oceania  econ 30k         biz 55k       first 80k
+   *   S.Amer   econ 20k         biz 40k
+   *   US/CA/MX econ 5-15k       first 40k
+   * Premium economy is not published and is interpolated. Africa and South
+   * Asia are not published at all and remain estimates. */
   AS: {
-    'NA-NA':   { y: 12500, w: 17500, j: 25000, f: 35000  },
-    'NA-CAM':  { y: 12500, w: 17500, j: 30000, f: 40000  },
-    'NA-SA':   { y: 25000, w: 35000, j: 45000, f: 60000  },
-    'NA-EU':   { y: 27500, w: 40000, j: 55000, f: 80000  },
-    'NA-NEA':  { y: 30000, w: 42500, j: 55000, f: 70000  },
-    'NA-SEA':  { y: 35000, w: 47500, j: 60000, f: 85000  },
-    'NA-OC':   { y: 35000, w: 47500, j: 65000, f: 90000  },
-    'NA-ME':   { y: 42500, w: 55000, j: 70000, f: 100000 },
+    'NA-NA':   { y: 12500, w: 20000, j: 25000, f: 40000  },
+    'NA-CAM':  { y: 12500, w: 20000, j: 30000, f: 40000  },
+    'NA-SA':   { y: 20000, w: 30000, j: 40000, f: 60000  },
+    'NA-EU':   { y: 22500, w: 38000, j: 55000, f: 70000  },
+    'NA-NEA':  { y: 25000, w: 37000, j: 50000, f: 70000  },
+    'NA-SEA':  { y: 30000, w: 45000, j: 60000, f: 85000  },
+    'NA-OC':   { y: 30000, w: 42000, j: 55000, f: 80000  },
+    'NA-ME':   { y: 32500, w: 47000, j: 62500, f: 100000 },
     'NA-AF':   { y: 45000, w: 60000, j: 75000, f: 105000 },
     'NA-SAS':  { y: 40000, w: 55000, j: 70000, f: 100000 }
   },

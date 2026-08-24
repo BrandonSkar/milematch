@@ -58,15 +58,15 @@ PB.PROGRAMS = {
   },
   AA: {
     name: 'American AAdvantage', short: 'American', alliance: 'oneworld',
-    chart: 'region', surcharge: 'low', baseline: 1.4,
+    chart: 'region', surcharge: 'low', baseline: 1.4, chartVerified: true,
     verify: 'https://www.aa.com',
-    note: 'AA metal is dynamic; the partner award chart still applies to oneworld partners. Chart values here are the partner saver levels.'
+    note: 'AA metal is dynamic; the partner chart still applies to oneworld partners. AA calls these starting estimates and prices some partner awards above them, so treat the figure as a floor.'
   },
   AS: {
     name: 'Alaska Mileage Plan', short: 'Alaska', alliance: 'oneworld',
-    chart: 'region', surcharge: 'low', baseline: 1.5,
+    chart: 'region', surcharge: 'low', baseline: 1.5, chartVerified: true,
     verify: 'https://www.alaskaair.com',
-    note: 'Partner pricing shifted toward distance/dynamic in recent years. Verify before transferring.'
+    note: 'Partner awards use a FIXED published chart that applies to all dates and seasons - only Alaska-operated flights are dynamic. Alaska publishes ranges; the saver end is shown.'
   },
   VS: {
     name: 'Virgin Atlantic Flying Club', short: 'Virgin Atlantic', alliance: 'SkyTeam',
@@ -267,24 +267,31 @@ PB.SURCHARGE_MODEL = {
  * `group` drives the visual split in the UI.
  * ------------------------------------------------------------------------- */
 PB.POPULAR_AIRLINES = [
-  { code: 'AA', name: 'American',        group: 'us' },
-  { code: 'UA', name: 'United',          group: 'us' },
-  { code: 'DL', name: 'Delta',           group: 'us' },
-  { code: 'AS', name: 'Alaska',          group: 'us' },
-  { code: 'B6', name: 'JetBlue',         group: 'us' },
-  { code: 'WN', name: 'Southwest',       group: 'us' },
-  { code: 'NK', name: 'Spirit',          group: 'us' },
-  { code: 'F9', name: 'Frontier',        group: 'us' },
-  { code: 'HA', name: 'Hawaiian',        group: 'us' },
-  { code: 'AC', name: 'Air Canada',      group: 'intl' },
-  { code: 'BA', name: 'British Airways', group: 'intl' },
-  { code: 'LH', name: 'Lufthansa',       group: 'intl' },
-  { code: 'AF', name: 'Air France',      group: 'intl' },
-  { code: 'VS', name: 'Virgin Atlantic', group: 'intl' },
-  { code: 'EK', name: 'Emirates',        group: 'intl' },
-  { code: 'QR', name: 'Qatar',           group: 'intl' },
-  { code: 'NH', name: 'ANA',             group: 'intl' },
-  { code: 'SQ', name: 'Singapore',       group: 'intl' }
+  { code: 'AA', name: 'American',  group: 'us' },
+  { code: 'UA', name: 'United',    group: 'us' },
+  { code: 'DL', name: 'Delta',     group: 'us' },
+  { code: 'AS', name: 'Alaska',    group: 'us' },
+  { code: 'WN', name: 'Southwest', group: 'us' },
+  { code: 'B6', name: 'JetBlue',   group: 'us' },
+  { code: 'NK', name: 'Spirit',    group: 'us' },
+  { code: 'F9', name: 'Frontier',  group: 'us' },
+  { code: 'HA', name: 'Hawaiian',  group: 'us' },
+  { code: 'AC', name: 'Air Canada', group: 'us' }
+];
+
+/* Everything else stays reachable through the "another airline" box - listed
+ * here only so the box can suggest codes rather than expecting you to know
+ * that Lufthansa is LH. */
+PB.MORE_AIRLINES = [
+  { code: 'BA', name: 'British Airways' }, { code: 'LH', name: 'Lufthansa' },
+  { code: 'AF', name: 'Air France' },      { code: 'KL', name: 'KLM' },
+  { code: 'VS', name: 'Virgin Atlantic' }, { code: 'IB', name: 'Iberia' },
+  { code: 'EK', name: 'Emirates' },        { code: 'QR', name: 'Qatar' },
+  { code: 'EY', name: 'Etihad' },          { code: 'TK', name: 'Turkish' },
+  { code: 'NH', name: 'ANA' },             { code: 'JL', name: 'Japan Airlines' },
+  { code: 'SQ', name: 'Singapore' },       { code: 'CX', name: 'Cathay' },
+  { code: 'QF', name: 'Qantas' },          { code: 'AV', name: 'Avianca' },
+  { code: 'LA', name: 'LATAM' },           { code: 'AM', name: 'Aeromexico' }
 ];
 
 PB.CABINS = {

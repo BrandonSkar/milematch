@@ -204,8 +204,22 @@ window.PB = window.PB || {};
       if (filters.freeCarryOn && o.bags.cabin !== null && o.bags.cabin < 1) return false;
       if (filters.freeChecked && o.bags.checked !== null && o.bags.checked < 1) return false;
       if (filters.airlines && filters.airlines.length) {
-        var hit = o.carrierCodes.some(function (c) { return filters.airlines.indexOf(c) !== -1; });
-        if (!hit) return false;
+        var codes = o.carrierCodes || [];
+        if (filters.strictAirlines) {
+          /* Every carrier on the itinerary must be one you picked. A codeshare
+           * that starts on American and finishes on someone else is exactly
+           * what "don't even consider it" is meant to exclude.
+           *
+           * An offer with no carrier data cannot be proven compliant, so under
+           * strict mode it is excluded - the one place where unknown fails a
+           * filter, because that is the point of asking for strict. */
+          if (!codes.length) return false;
+          var all = codes.every(function (c) { return filters.airlines.indexOf(c) !== -1; });
+          if (!all) return false;
+        } else {
+          var hit = codes.some(function (c) { return filters.airlines.indexOf(c) !== -1; });
+          if (!hit) return false;
+        }
       }
       return true;
     });

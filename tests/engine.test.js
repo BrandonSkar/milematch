@@ -672,6 +672,43 @@ $2,150
   assert.ok(offers[0].carriers.includes('Delta'));
 });
 
+test('strict airline mode excludes part-codeshare itineraries', () => {
+  const offers = [
+    { id: '1', price: 200, carrierCodes: ['AA'],       stops: 0, bags: { checked: null, cabin: null } },
+    { id: '2', price: 210, carrierCodes: ['AA', 'BA'], stops: 1, bags: { checked: null, cabin: null } },
+    { id: '3', price: 220, carrierCodes: ['DL'],       stops: 0, bags: { checked: null, cabin: null } },
+    { id: '4', price: 230, carrierCodes: [],           stops: 0, bags: { checked: null, cabin: null } }
+  ];
+
+  // Loose: any matching carrier is enough, so the AA/BA codeshare survives.
+  const loose = PB.flights.applyFilters(offers, { airlines: ['AA'] });
+  assert.deepStrictEqual([...loose.map((o) => o.id)], ['1', '2']);
+
+  // Strict: every carrier must be selected, and unknown carriers cannot be
+  // proven compliant so they are excluded too.
+  const strict = PB.flights.applyFilters(offers, { airlines: ['AA'], strictAirlines: true });
+  assert.deepStrictEqual([...strict.map((o) => o.id)], ['1']);
+
+  // Selecting both halves of the codeshare lets it back through.
+  const both = PB.flights.applyFilters(offers, { airlines: ['AA', 'BA'], strictAirlines: true });
+  assert.deepStrictEqual([...both.map((o) => o.id)], ['1', '2']);
+});
+
+test('strict mode with no airlines selected filters nothing', () => {
+  const offers = [{ id: '1', price: 200, carrierCodes: [], stops: 0, bags: { checked: null, cabin: null } }];
+  assert.strictEqual(PB.flights.applyFilters(offers, { strictAirlines: true }).length, 1);
+});
+
+test('the airline chip list stays short, with the rest reachable by code', () => {
+  assert.strictEqual(PB.POPULAR_AIRLINES.length, 10, 'ten one-click airlines');
+  assert.ok(PB.MORE_AIRLINES.length > 10, 'the long tail is still listed for reference');
+  const chipCodes = PB.POPULAR_AIRLINES.map((a) => a.code);
+  PB.MORE_AIRLINES.forEach((a) => {
+    assert.ok(!chipCodes.includes(a.code), a.code + ' should not be in both lists');
+    assert.match(a.code, /^[A-Z0-9]{2}$/);
+  });
+});
+
 test('filters apply to pasted offers, and unknowns never fail silently', () => {
   const offers = PB.flights.parsePastedFares(GOOGLE_PASTE);
   const nonstop = PB.flights.applyFilters(offers, { nonStop: true });
