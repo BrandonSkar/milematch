@@ -420,6 +420,31 @@ test('pasting flight results produces pickable offers and prices them', maybe, a
   assert.ok(r.headline);
 });
 
+/* The points comparison sits below up to a dozen flight rows. Telling someone
+ * it is "below" was not enough — there needs to be a way to get there. */
+test('a jump control links the picked flight to its points comparison', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const jump = document.querySelector('#jumpToPoints');
+    return { hidden: jump.hidden, label: jump.textContent.trim() };
+  })()`);
+  assert.strictEqual(r.hidden, false, 'should appear once flights are listed');
+  assert.match(r.label, /costs in points/i);
+  assert.match(r.label, /\$\d/, 'should name the fare it applies to');
+
+  const landed = await evaluate(`(() => {
+    document.querySelector('#jumpToPoints').click();
+    return !!document.querySelector('.headline.flash');
+  })()`);
+  assert.ok(landed, 'clicking should highlight the points headline');
+});
+
+test('the selected flight states it is the one being priced', maybe, async () => {
+  const text = await evaluate(`
+    (document.querySelector('.offer.is-selected .offer-chosen') || {}).textContent || ''
+  `);
+  assert.match(text, /using this flight/i);
+});
+
 test('nonstop filter narrows pasted offers', maybe, async () => {
   const r = await evaluate(`(() => {
     const cb = document.querySelector('#nonStopInput');

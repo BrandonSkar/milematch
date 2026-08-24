@@ -192,6 +192,15 @@
     });
     $('#airlineInput').addEventListener('input', updateFiltersNote);
 
+    $('#jumpToPoints').addEventListener('click', function () {
+      var target = $('.headline') || $('#results');
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Briefly mark it so it is obvious where you landed.
+      target.classList.add('flash');
+      setTimeout(function () { target.classList.remove('flash'); }, 1400);
+    });
+
     /* Parse as you paste, so the fares appear without pressing anything. */
     $('#pasteInput').addEventListener('input', function () {
       var parsed = PB.flights.parsePastedFares(this.value);
@@ -533,6 +542,13 @@
     renderOffers(shown);
     var picked = shown.filter(function (o) { return o.id === selectedOfferId; })[0];
     evaluateWith(q, picked.price);
+
+    /* The points comparison sits below up to a dozen flight rows, which is far
+     * enough off screen that "below" alone was not a useful instruction. */
+    var jump = $('#jumpToPoints');
+    jump.hidden = false;
+    jump.textContent = 'See what the ' + PB.fmt.money(picked.price) + ' ' +
+                       picked.carriers[0] + ' flight costs in points ↓';
   }
 
   /* Time strings arrive as "2026-11-15 07:00" (worker) or ISO (older paths).
@@ -611,7 +627,9 @@
         } else {
           h += '<span class="leg-stop">No itinerary detail for this fare.</span>';
         }
-        h += '<span class="offer-chosen">Priced in points below ↓</span></span>';
+        /* A statement, not a call to action — the clickable jump lives below
+         * the whole list, since a button cannot be nested inside this one. */
+        h += '<span class="offer-chosen">✓ Using this flight for the points comparison</span></span>';
       }
 
       btn.innerHTML = h;

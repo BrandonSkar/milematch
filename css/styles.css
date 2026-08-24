@@ -281,6 +281,21 @@ kbd {
   color: var(--accent); font-weight: 600;
 }
 
+.jump-btn {
+  display: block; width: 100%; margin-top: .6rem;
+  background: var(--bg-elev-2); border: 1px dashed var(--line);
+  color: var(--accent); border-radius: var(--radius-sm);
+  padding: .6rem; font-size: .84rem; font-weight: 600; cursor: pointer;
+}
+.jump-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* Momentary highlight so it is obvious where the jump landed. */
+@keyframes flashRing {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+.flash { animation: flashRing 1.4s ease-out; }
+
 /* ── Results ─────────────────────────────────────────────────── */
 /* ── Headline: the one answer, stated once ───────────────────── */
 .headline {
