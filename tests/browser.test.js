@@ -474,3 +474,60 @@ test('filters are marked inactive when there is no flight list to filter', maybe
   assert.match(note, /need a list of flights/i);
   assert.match(note, /Paste results/i, 'should point at the mode that does work');
 });
+
+/* Simulated card bonuses are blended into the balances the engine uses, so a
+ * result can claim "you can book this" on points the user does not own. */
+test('results built on simulated card bonuses say so loudly', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    document.querySelector('input[name=fareSource][value=manual]').click();
+    // A small real balance, then a large simulated bonus on top.
+    // Clear every balance, currencies AND airline programs, so the real
+    // total is known rather than inherited from an earlier test.
+    document.querySelectorAll('.balance-row input').forEach(el => {
+      if (el.value) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    set('#bal-UR', 5000);
+    const card = [...document.querySelectorAll('#cardList .cc')]
+      .find(l => l.querySelector('.cc-bonus').textContent.includes('+'));
+    if (!card.classList.contains('is-on')) card.querySelector('input').click();
+
+    set('#fromInput','SEA'); set('#toInput','JFK'); set('#cabinInput','y'); set('#cashInput', 400);
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable:true, bubbles:true }));
+
+    const w = document.querySelector('.sim-warning');
+    return { shown: !!w, text: w ? w.textContent.replace(/\\s+/g,' ') : '' };
+  })()`);
+
+  assert.ok(r.shown, 'a warning must appear when results lean on simulated points');
+  assert.match(r.text, /points you don't have yet/i);
+  assert.match(r.text, /You actually hold 5,000/, 'should state the real balance');
+});
+
+test('one click drops the simulated cards and re-prices on real points', maybe, async () => {
+  const r = await evaluate(`(() => {
+    document.querySelector('#dropSimCards').click();
+    return {
+      warningGone: !document.querySelector('.sim-warning'),
+      ticked: document.querySelectorAll('#cardList .cc.is-on').length,
+      chip: document.querySelector('#balanceChip').textContent
+    };
+  })()`);
+
+  assert.ok(r.warningGone, 'the warning should clear once simulation is off');
+  assert.strictEqual(r.ticked, 0, 'no cards should remain modelled');
+  assert.match(r.chip, /^5,000 pts/, 'the balance chip should fall back to real points');
+});
+
+test('each result names the airlines its program can actually book', maybe, async () => {
+  const labels = await evaluate(`
+    [...document.querySelectorAll('#results .result-program')].slice(0,6).map(e => e.textContent)
+  `);
+  assert.ok(labels.some((l) => /books /i.test(l)), 'programs should say what they ticket');
+});

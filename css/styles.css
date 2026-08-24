@@ -443,6 +443,22 @@ kbd {
 }
 .ios-notice .link-btn { flex: none; }
 
+/* Loud on purpose: results built on points you do not own are the most
+   misleading thing this app can show. */
+.sim-warning {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  border: 1px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-elev));
+  border-radius: var(--radius); padding: .85rem 1rem; margin-bottom: .8rem;
+  font-size: .84rem; line-height: 1.45;
+}
+.sim-warning b { font-family: var(--mono); }
+.sim-warning .btn { flex: none; white-space: nowrap; }
+@media (max-width: 620px) {
+  .sim-warning { flex-direction: column; }
+  .sim-warning .btn { width: 100%; }
+}
+
 .availability-warning {
   border-left: 3px solid var(--warn);
   background: color-mix(in srgb, var(--warn) 10%, transparent);

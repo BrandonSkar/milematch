@@ -725,6 +725,28 @@
         'Every option below shows how far short you are — or try the <b>Cards</b> tab to see which welcome bonus would close the gap.</div>';
     }
 
+    /* Simulated card bonuses are blended into the balances the engine uses, so
+     * a result can say "you can book this" when it actually means "you could,
+     * if you opened four cards, paid the fees and hit the spend". That has to
+     * be impossible to miss, not a green note on another tab. */
+    var simCost = PB.cardCost(state.simulatedCards, state.customCards);
+    if (simCost.bonus > 0) {
+      var realTotal = Object.keys(state.balances)
+        .reduce(function (a, k) { return a + state.balances[k]; }, 0);
+      html += '<div class="sim-warning">' +
+        '<div>' +
+          '<strong>These results assume ' + PB.fmt.miles(simCost.bonus) + ' points you don\'t have yet.</strong> ' +
+          'You actually hold <b>' + PB.fmt.miles(realTotal) + '</b>. The rest is modelled from ' +
+          state.simulatedCards.length + ' credit card' + (state.simulatedCards.length > 1 ? 's' : '') +
+          ' you\'d need to open' +
+          (simCost.fees ? ', costing ' + PB.fmt.money(simCost.fees) + ' in annual fees' : '') +
+          (simCost.minSpend ? ' and ' + PB.fmt.money(simCost.minSpend) + ' of required spend' : '') +
+          '.' +
+        '</div>' +
+        '<button type="button" id="dropSimCards" class="btn">Use only my real points</button>' +
+        '</div>';
+    }
+
     /* Headline: the single answer, stated once, in plain language. Everything
      * else on the page is supporting detail you can choose to open. */
     var best = affordable[0];
@@ -787,6 +809,19 @@
       'Chart values here are estimates, transfers are irreversible, and this app cannot see live award seat availability.</p>';
 
     host.innerHTML = html;
+
+    var drop = $('#dropSimCards');
+    if (drop) {
+      drop.addEventListener('click', function () {
+        state.simulatedCards = [];
+        PB.store.save();
+        renderCards();
+        renderCardSimSummary();
+        renderBalances();
+        updateBalanceChip();
+        if (lastQuery && lastQuery.cashPrice) evaluateWith(lastQuery, lastQuery.cashPrice);
+      });
+    }
   }
 
   function metric(label, value) {
@@ -801,8 +836,17 @@
     var cls = 'result' + (isBest ? ' is-best' : '') + (o.affordable ? '' : ' is-locked');
     var h = '<details class="' + cls + '"' + (isBest ? ' open' : '') + '>';
 
+    /* A loyalty program is not an airline. Iberia Avios shows up for an
+     * American flight because Avios can ticket oneworld — which is not
+     * obvious unless the row says so. */
+    var CARRIER_NAMES = { AA: 'American', AS: 'Alaska', UA: 'United', DL: 'Delta',
+                          B6: 'JetBlue', WN: 'Southwest' };
+    var books = (PB.usCarriersFor(o.programId) || [])
+      .map(function (c) { return CARRIER_NAMES[c] || c; });
+
     h += '<summary>' +
       '<span class="result-program">' + esc(o.program.short) +
+        (books.length ? '<em> · books ' + esc(books.join(', ')) + '</em>' : '') +
         (o.roundTripChart ? '<em> · round trip</em>' : '') + '</span>' +
       '<span class="result-cost">' + PB.fmt.miles(o.miles) + '<small> pts</small></span>' +
       '<span class="result-tax">' + (o.taxes ? '+ ' + PB.fmt.money(o.taxes) : 'no fees') + '</span>' +
