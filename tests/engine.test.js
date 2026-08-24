@@ -672,6 +672,55 @@ $2,150
   assert.ok(offers[0].carriers.includes('Delta'));
 });
 
+/* ── Restricting which programs are shown ──────────────────── */
+
+test('usCarriersFor maps programs to the US airlines they can ticket', () => {
+  assert.deepStrictEqual([...PB.usCarriersFor('AC')], ['UA'], 'Star reaches United');
+  assert.deepStrictEqual([...PB.usCarriersFor('BA')].sort(), ['AA', 'AS'], 'oneworld reaches AA and Alaska');
+  assert.deepStrictEqual([...PB.usCarriersFor('VS')], ['DL'], 'SkyTeam reaches Delta');
+  assert.deepStrictEqual([...PB.usCarriersFor('EK')], [], 'Emirates reaches no US major');
+});
+
+test('onlyCarriers drops programs that cannot ticket your airlines', () => {
+  const base = {
+    from: 'SEA', to: 'JFK', cabin: 'y', cashPrice: 400,
+    passengers: 1, roundTrip: false, balances: { UR: 500000, MR: 500000, C1: 500000, BILT: 500000 }
+  };
+
+  const all = PB.evaluate(base);
+  const deltaOnly = PB.evaluate({ ...base, onlyCarriers: ['DL'] });
+
+  assert.ok(deltaOnly.options.length < all.options.length);
+  // Every survivor must actually reach Delta.
+  deltaOnly.options.forEach((o) => {
+    assert.ok(PB.usCarriersFor(o.programId).includes('DL'), o.programId + ' cannot ticket Delta');
+  });
+  // Aeroplan is Star and cannot, so it must be gone.
+  assert.ok(!deltaOnly.options.some((o) => o.programId === 'AC'));
+});
+
+test('the US majors together still surface a useful set of programs', () => {
+  const r = PB.evaluate({
+    from: 'SEA', to: 'JFK', cabin: 'y', cashPrice: 400,
+    passengers: 1, roundTrip: false, balances: { UR: 500000, MR: 500000 },
+    onlyCarriers: ['DL', 'UA', 'AA', 'AS']
+  });
+  assert.ok(r.options.length >= 8, 'the four US majors span all three alliances');
+  assert.ok(!r.options.some((o) => o.programId === 'EK'), 'Emirates reaches none of them');
+});
+
+test('verifiedOnly leaves only charts checked against a published source', () => {
+  const r = PB.evaluate({
+    from: 'SEA', to: 'JFK', cabin: 'y', cashPrice: 400,
+    passengers: 1, roundTrip: false, balances: { UR: 500000, MR: 500000, BILT: 500000 },
+    verifiedOnly: true
+  });
+  assert.ok(r.options.length > 0);
+  r.options.forEach((o) => {
+    assert.ok(o.chartVerified, o.programId + ' is not verified but was shown');
+  });
+});
+
 test('strict airline mode excludes part-codeshare itineraries', () => {
   const offers = [
     { id: '1', price: 200, carrierCodes: ['AA'],       stops: 0, bags: { checked: null, cabin: null } },

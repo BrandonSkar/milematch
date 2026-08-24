@@ -70,9 +70,9 @@ PB.PROGRAMS = {
   },
   VS: {
     name: 'Virgin Atlantic Flying Club', short: 'Virgin Atlantic', alliance: 'SkyTeam',
-    chart: 'region', surcharge: 'high', baseline: 1.6,
+    chart: 'region', surcharge: 'low', baseline: 1.6, chartVerified: true,
     verify: 'https://www.virginatlantic.com',
-    note: 'Excellent partner sweet spots (ANA, Delta One), but Virgin\'s own metal carries heavy surcharges.'
+    note: 'One of the best ways to fly Delta One - 50,000 points to Europe one way, well under Delta\'s own price. Virgin charges heavy surcharges on ITS OWN metal but NOT on partner awards like Delta and ANA, which is what these figures assume. ANA awards through Virgin can be booked one way.'
   },
   AV: {
     name: 'Avianca LifeMiles', short: 'LifeMiles', alliance: 'Star',
@@ -293,6 +293,46 @@ PB.MORE_AIRLINES = [
   { code: 'QF', name: 'Qantas' },          { code: 'AV', name: 'Avianca' },
   { code: 'LA', name: 'LATAM' },           { code: 'AM', name: 'Aeromexico' }
 ];
+
+/* ---------------------------------------------------------------------------
+ * Which US carriers each loyalty program can actually put you on.
+ *
+ * Alliance membership does the work: any Star program can ticket United, any
+ * oneworld program can ticket American and Alaska, any SkyTeam program can
+ * ticket Delta. Programs outside an alliance only reach their own metal plus
+ * named partners.
+ *
+ * This is what powers "only show programs that can book my airlines" - if you
+ * only ever fly the US majors, a program that cannot ticket any of them is
+ * pure noise, and noise in a list of estimates is worse than useless.
+ * ------------------------------------------------------------------------- */
+PB.ALLIANCE_US_CARRIERS = {
+  Star:     ['UA'],
+  oneworld: ['AA', 'AS'],
+  SkyTeam:  ['DL']
+};
+
+/* Non-alliance programs, and any extra reach beyond the alliance rule. */
+PB.EXTRA_US_REACH = {
+  EK: [],            // Emirates: own metal only for practical purposes
+  EY: ['AA'],        // Etihad has an American partnership
+  B6: ['B6'],        // JetBlue books JetBlue
+  WN: ['WN'],        // Southwest books Southwest
+  AM: ['DL'],        // Aeromexico is SkyTeam, reaches Delta
+  AS: ['AS', 'AA'],  // Alaska's own program, plus oneworld
+  AA: ['AA', 'AS'],
+  DL: ['DL'],
+  UA: ['UA']
+};
+
+/** US carriers a program can ticket. */
+PB.usCarriersFor = function (programId) {
+  var prog = PB.PROGRAMS[programId];
+  if (!prog) return [];
+  var fromAlliance = PB.ALLIANCE_US_CARRIERS[prog.alliance] || [];
+  var extra = PB.EXTRA_US_REACH[programId] || [];
+  return fromAlliance.concat(extra).filter(function (c, i, a) { return a.indexOf(c) === i; });
+};
 
 PB.CABINS = {
   y: { name: 'Economy',         short: 'Econ' },

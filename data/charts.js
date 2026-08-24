@@ -163,7 +163,13 @@ PB.REGION_CHARTS = {
   },
 
   /* Virgin Atlantic Flying Club — partner awards, one-way.
-   * NOTE: ANA partner awards booked through Virgin are ROUND TRIP only. */
+   * Verified 2026-08-20 for the rows that matter on US carriers:
+   *   NA-EU business on Delta One  50,000  (confirmed)
+   *   NA-NA economy on Delta        5,000-12,500; upper end used
+   *   NA-NEA first on ANA          55,000-60,000
+   * ANA awards through Virgin are bookable ONE WAY - Virgin does not impose
+   * ANA's own round-trip requirement. An earlier note here claimed otherwise.
+   * Rows not involving a US carrier remain estimates. */
   VS: {
     'NA-EU':   { y: 20000, w: 30000, j: 50000, f: 75000  },
     'NA-NEA':  { y: 22500, w: 32500, j: 45000, f: 60000  },

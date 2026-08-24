@@ -332,7 +332,20 @@ window.PB = window.PB || {};
 
     var options = [];
 
+    /* Optionally drop programs that cannot ticket any of the airlines you
+     * actually fly. For someone who only uses the US majors, a program with no
+     * route onto those carriers is noise — and noise among estimates is worse
+     * than no answer at all. */
+    var wantCarriers = (q.onlyCarriers || []).filter(Boolean);
+
     Object.keys(PB.PROGRAMS).forEach(function (pid) {
+      if (wantCarriers.length) {
+        var reach = PB.usCarriersFor(pid);
+        var overlap = reach.some(function (c) { return wantCarriers.indexOf(c) !== -1; });
+        if (!overlap) return;
+      }
+      if (q.verifiedOnly && !PB.PROGRAMS[pid].chartVerified) return;
+
       var priced = PB.priceAward(pid, ctx);
       if (!priced) return;
 

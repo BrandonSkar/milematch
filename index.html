@@ -139,6 +139,19 @@
     <p class="hint filters-note" id="filtersNote"></p>
 
     <fieldset class="fare-source">
+      <legend>Which loyalty programs to show</legend>
+      <label class="toggle">
+        <input type="checkbox" id="onlyRelevantInput">
+        <span>Only programs that can book my selected airlines</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="verifiedOnlyInput">
+        <span>Only programs with a <b>verified</b> award chart</span>
+      </label>
+      <p class="hint" id="programFilterNote"></p>
+    </fieldset>
+
+    <fieldset class="fare-source">
       <legend>Cash price to compare against</legend>
       <div class="seg">
         <label><input type="radio" name="fareSource" value="paste" checked> Paste results</label>

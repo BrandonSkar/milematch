@@ -183,7 +183,7 @@
     });
 
     ['#nonStopInput', '#carryOnInput', '#checkedBagInput', '#airlineInput',
-     '#strictAirlinesInput'].forEach(function (sel) {
+     '#strictAirlinesInput', '#onlyRelevantInput', '#verifiedOnlyInput'].forEach(function (sel) {
       $(sel).addEventListener('change', function () {
         updateFiltersNote();
         persistSearchForm();
@@ -304,6 +304,8 @@
       cashPrice: parseFloat($('#cashInput').value) || null,
       nonStop: $('#nonStopInput').checked,
       strictAirlines: $('#strictAirlinesInput').checked,
+      onlyRelevant: $('#onlyRelevantInput').checked,
+      verifiedOnly: $('#verifiedOnlyInput').checked,
       freeCarryOn: $('#carryOnInput').checked,
       freeChecked: $('#checkedBagInput').checked,
       // Chips plus anything typed into the overflow box, de-duplicated.
@@ -366,6 +368,35 @@
     $('#clearAirlines').hidden = !pickedAirlines.length && !$('#airlineInput').value;
   }
 
+  /* Say how many programs survive the filters, and warn when "only my
+   * airlines" is on with no airlines picked — that combination silently does
+   * nothing, which is the kind of thing people quietly mistrust. */
+  function updateProgramFilterNote(q) {
+    var note = $('#programFilterNote');
+    if (!note) return;
+
+    var total = Object.keys(PB.PROGRAMS).length;
+    var kept = Object.keys(PB.PROGRAMS).filter(function (pid) {
+      if (q.verifiedOnly && !PB.PROGRAMS[pid].chartVerified) return false;
+      if (q.onlyRelevant && q.airlines.length) {
+        var reach = PB.usCarriersFor(pid);
+        if (!reach.some(function (c) { return q.airlines.indexOf(c) !== -1; })) return false;
+      }
+      return true;
+    }).length;
+
+    if (q.onlyRelevant && !q.airlines.length) {
+      note.innerHTML = 'Pick some airlines above for this to do anything — ' +
+                       'with none selected, every program is shown.';
+      note.classList.add('warn');
+      return;
+    }
+    note.classList.remove('warn');
+    note.textContent = kept === total
+      ? 'Showing all ' + total + ' programs.'
+      : 'Showing ' + kept + ' of ' + total + ' programs.';
+  }
+
   /* The filters describe real flights, which only exist in live mode. Say so
    * rather than letting them look active while doing nothing. */
   function updateFiltersNote() {
@@ -383,6 +414,8 @@
       on.push((q.strictAirlines ? 'only ' : '') +
         (named.length > 4 ? named.length + ' airlines' : named.join(', ')));
     }
+
+    updateProgramFilterNote(q);
 
     var note = $('#filtersNote');
     if (!on.length) { note.textContent = ''; note.classList.remove('warn'); return; }
@@ -415,6 +448,8 @@
     $('#returnInput').disabled = !$('#roundTripInput').checked;
     $('#nonStopInput').checked = !!s.nonStop;
     $('#strictAirlinesInput').checked = !!s.strictAirlines;
+    $('#onlyRelevantInput').checked = !!s.onlyRelevant;
+    $('#verifiedOnlyInput').checked = !!s.verifiedOnly;
     $('#carryOnInput').checked = !!s.freeCarryOn;
     $('#checkedBagInput').checked = !!s.freeChecked;
     /* Restore chips for anything in the curated list; the rest goes back into
@@ -521,7 +556,9 @@
     var result = PB.evaluate({
       from: q.from, to: q.to, cabin: q.cabin, cashPrice: cashPrice,
       passengers: q.passengers, roundTrip: q.roundTrip,
-      balances: effectiveBalances()
+      balances: effectiveBalances(),
+      onlyCarriers: q.onlyRelevant ? q.airlines : [],
+      verifiedOnly: q.verifiedOnly
     });
     if (result.error) { setStatus(esc(result.error), 'err'); return; }
     lastResult = result;
