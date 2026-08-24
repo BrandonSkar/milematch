@@ -54,16 +54,24 @@ PB.ZONE_DISTANCE_CHARTS = {
 };
 
 PB.DISTANCE_CHARTS = {
-  /* Avios (British Airways) — per one-way segment */
+  /* Avios (British Airways) — per one-way segment.
+   * Verified 2026-08-20 against the published 8-band Reward Flight chart.
+   * The previous values here were 30-70% too expensive, which made every
+   * Avios program look far worse than it is.
+   *
+   * Economy, business and first are the published figures. Premium economy is
+   * NOT published per band and is interpolated 60% of the way from economy to
+   * business — treat those as approximate. First is unavailable on the two
+   * shortest bands; the values there are placeholders. */
   BA: [
-    [650,   { y: 6500,  w: 9750,  j: 13000, f: 19500  }],
-    [1151,  { y: 9000,  w: 13500, j: 18000, f: 27000  }],
-    [2000,  { y: 11000, w: 16500, j: 22000, f: 33000  }],
-    [3000,  { y: 13000, w: 19500, j: 26000, f: 39000  }],
-    [4000,  { y: 20000, w: 30000, j: 50000, f: 60000  }],
-    [5500,  { y: 25000, w: 37500, j: 62500, f: 75000  }],
-    [6500,  { y: 30000, w: 45000, j: 75000, f: 90000  }],
-    [99999, { y: 35000, w: 52500, j: 87500, f: 105000 }]
+    [650,   { y: 4000,  w: 6250,  j: 7750,  f: 11650  }],
+    [1150,  { y: 6500,  w: 10400, j: 13000, f: 19500  }],
+    [2000,  { y: 8500,  w: 13600, j: 17000, f: 25500  }],
+    [3000,  { y: 10000, w: 17200, j: 22000, f: 34000  }],
+    [4000,  { y: 13000, w: 22900, j: 29500, f: 44000  }],
+    [5500,  { y: 16250, w: 35150, j: 47750, f: 68000  }],
+    [6500,  { y: 21750, w: 42300, j: 56000, f: 85000  }],
+    [99999, { y: 32500, w: 53800, j: 68000, f: 102000 }]
   ],
 
   /* Iberia Plus and Qatar Privilege Club use the same Avios bands.
@@ -164,12 +172,24 @@ PB.REGION_CHARTS = {
     'EU-SA':   { y: 32000, w: 45000, j: 65000, f: 90000  }
   },
 
-  /* Turkish Miles&Smiles — Star Alliance partners, one-way, no surcharges */
+  /* Turkish Miles&Smiles — Star Alliance partners, one-way, no surcharges.
+   * PARTIALLY verified 2026-08-20. Turkish devalued partner awards on
+   * 3 Dec 2025 and the widely-repeated sweet spots here were pre-devaluation:
+   *   NA-NA  economy   was 10,000, actually 15,000
+   *   NA-EU  business  was 45,000, actually 85,000-90,000
+   * Two independent sources agree on the domestic figures and on NA-Europe
+   * business (85k to Greece/Hungary/Croatia, 90k to UK/France/Switzerland;
+   * 90k used here as the common case). A third source disagreed with both and
+   * was discarded.
+   *
+   * The remaining rows below are still UNVERIFIED estimates — Turkish does not
+   * publish them anywhere reachable, and they are almost certainly also
+   * pre-devaluation and therefore too cheap. */
   TK: {
-    'NA-NA':   { y: 10000, w: 15000, j: 22500, f: 30000  },
+    'NA-NA':   { y: 15000, w: 19000, j: 22500, f: 30000  },
     'NA-CAM':  { y: 12500, w: 18000, j: 27500, f: 35000  },
     'NA-SA':   { y: 25000, w: 35000, j: 50000, f: 65000  },
-    'NA-EU':   { y: 30000, w: 40000, j: 45000, f: 67500  },
+    'NA-EU':   { y: 45000, w: 65000, j: 90000, f: 120000 },
     'NA-ME':   { y: 37500, w: 50000, j: 62500, f: 85000  },
     'NA-AF':   { y: 40000, w: 52500, j: 65000, f: 90000  },
     'NA-SAS':  { y: 42500, w: 55000, j: 67500, f: 95000  },

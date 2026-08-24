@@ -82,6 +82,44 @@ test('a domestic hop is not priced with a transatlantic band', () => {
   assert.ok(p.miles < 30000, `domestic business should be well under 30k, got ${p.miles}`);
 });
 
+/* Pins the verified Avios bands. The values shipped before 2026-08-20 were
+ * 30-70% too expensive, which made every Avios program look worse than it is. */
+test('Avios bands match the published chart', () => {
+  const cases = [
+    [500,   'y', 4000],  [500,   'j', 7750],    // band 1
+    [900,   'y', 6500],  [900,   'j', 13000],   // band 2  (SEA-SNA sits here)
+    [1800,  'y', 8500],  [1800,  'j', 17000],   // band 3
+    [2500,  'y', 10000], [2500,  'j', 22000],   // band 4
+    [3450,  'y', 13000], [3450,  'j', 29500],   // band 5  (JFK-LHR)
+    [5000,  'y', 16250], [5000,  'j', 47750],   // band 6
+    [6000,  'y', 21750], [6000,  'j', 56000],   // band 7
+    [8000,  'y', 32500], [8000,  'j', 68000]    // band 8
+  ];
+  cases.forEach(([dist, cabin, expected]) => {
+    const p = PB.priceAward('BA', {
+      from: PB.airports.JFK, to: PB.airports.LHR,
+      distance: dist, cabin, roundTrip: false, passengers: 1
+    });
+    assert.strictEqual(p.miles, expected, `${dist}mi ${cabin}`);
+    assert.ok(p.chartVerified);
+  });
+});
+
+test('Turkish reflects the December 2025 devaluation', () => {
+  // The 45,000-mile US-Europe business award is gone, and US domestic rose.
+  const dom = PB.priceAward('TK', {
+    from: PB.airports.SEA, to: PB.airports.ORD,
+    distance: 1716, cabin: 'y', roundTrip: false, passengers: 1
+  });
+  assert.strictEqual(dom.miles, 15000, 'domestic economy rose from 10,000');
+
+  const eu = PB.priceAward('TK', {
+    from: PB.airports.JFK, to: PB.airports.LHR,
+    distance: 3443, cabin: 'j', roundTrip: false, passengers: 1
+  });
+  assert.strictEqual(eu.miles, 90000, 'US-Europe business is no longer 45,000');
+});
+
 test('Avios aliases resolve to the shared BA band table', () => {
   const ctx = { from: PB.airports.JFK, to: PB.airports.LHR, distance: 3450, cabin: 'y', roundTrip: false, passengers: 1 };
   assert.strictEqual(PB.priceAward('IB', ctx).miles, PB.priceAward('BA', ctx).miles);

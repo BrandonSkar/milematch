@@ -84,7 +84,7 @@ PB.PROGRAMS = {
     name: 'Turkish Miles&Smiles', short: 'Turkish', alliance: 'Star',
     chart: 'region', surcharge: 'none', baseline: 1.6,
     verify: 'https://www.turkishairlines.com',
-    note: 'Famous for cheap United domestic and US-Europe awards. Booking can require phoning the call center.'
+    note: 'DEVALUED 3 Dec 2025 — the famous 45,000-mile US-Europe business award is gone; it is now 85,000-90,000. US domestic on United rose to 15,000 economy / 22,500 business one-way. Booking can require phoning the call center.'
   },
   AF: {
     name: 'Air France/KLM Flying Blue', short: 'Flying Blue', alliance: 'SkyTeam',
@@ -94,19 +94,19 @@ PB.PROGRAMS = {
   },
   BA: {
     name: 'British Airways Executive Club', short: 'BA Avios', alliance: 'oneworld',
-    chart: 'distance', surcharge: 'high', baseline: 1.4,
+    chart: 'distance', surcharge: 'high', baseline: 1.4, chartVerified: true,
     verify: 'https://www.britishairways.com',
     note: 'Distance-based Avios. Great for short hops; BA-metal longhaul carries surcharges that can exceed $600 round trip.'
   },
   IB: {
     name: 'Iberia Plus', short: 'Iberia Avios', alliance: 'oneworld',
-    chart: 'distance', surcharge: 'low', baseline: 1.5,
+    chart: 'distance', surcharge: 'low', baseline: 1.5, chartVerified: true,
     verify: 'https://www.iberia.com',
     note: 'Same Avios currency as BA, far lower surcharges on Iberia metal. Avios move freely between BA/Iberia/Qatar/Finnair.'
   },
   QR: {
     name: 'Qatar Privilege Club', short: 'Qatar Avios', alliance: 'oneworld',
-    chart: 'distance', surcharge: 'medium', baseline: 1.5,
+    chart: 'distance', surcharge: 'medium', baseline: 1.5, chartVerified: true,
     verify: 'https://www.qatarairways.com',
     note: 'Avios-based. Qsuite business class is the draw.'
   },
