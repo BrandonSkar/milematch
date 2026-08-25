@@ -30,6 +30,15 @@
  * shared across colos. It will not stop a distributed abuser - it caps a
  * runaway script or one machine hammering the endpoint, which is the realistic
  * failure mode when the URL is baked into a public page. */
+/* Bump whenever the SHAPE of a normalised offer changes.
+ *
+ * The edge cache is keyed on the request URL, and deploying new code does not
+ * clear it. Without a version in that key, a worker that has just learned to
+ * send something new keeps answering without it for up to CACHE_HOURS - which
+ * is exactly how return flights stayed missing after the deploy that added
+ * them. Old entries are not deleted; they simply stop being addressed. */
+const PAYLOAD_VERSION = '2';
+
 const RATE = { windowMs: 60_000, maxPerWindow: 20 };
 const hits = new Map();
 
@@ -76,6 +85,7 @@ export default {
         ok: true,
         credentials: Boolean(env.SERPAPI_KEY),
         provider: 'serpapi/google_flights',
+        payloadVersion: PAYLOAD_VERSION,
         cacheHours: Number(env.CACHE_HOURS || 6),
         originLocked: configured !== '*'
       }, 200, origin);
@@ -147,6 +157,7 @@ async function handleSearch(url, env, ctx, origin) {
   const cacheHours = Number(env.CACHE_HOURS || 6);
   const cacheKeyUrl = new URL(url.toString());
   cacheKeyUrl.searchParams.delete('_');
+  cacheKeyUrl.searchParams.set('__shape', PAYLOAD_VERSION);
   const cacheKey = new Request(cacheKeyUrl.toString(), { method: 'GET' });
   const cache = caches.default;
 

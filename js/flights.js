@@ -53,6 +53,8 @@ window.PB = window.PB || {};
     return proxySearch(q, settings, departureToken);
   };
 
+  var nonce = 0;
+
   function proxySearch(q, settings, departureToken) {
     var base = PB.flights.proxyUrl(settings).replace(/\/+$/, '');
     var params = new URLSearchParams({
@@ -73,6 +75,21 @@ window.PB = window.PB || {};
     /* The token only means anything alongside the search it came from, so it
      * is added to the same parameters rather than sent on its own. */
     if (departureToken) params.set('departureToken', departureToken);
+
+    /* Defeat the BROWSER's own cache, and only the browser's.
+     *
+     * The worker answers with `Cache-Control: max-age=6h` to protect a shared
+     * monthly search allowance, which also means a browser will replay its
+     * stored copy for six hours without ever asking. That is how a freshly
+     * deployed worker kept appearing not to be deployed: the network was
+     * never reached. The worker strips `_` before building ITS cache key
+     * precisely so this parameter cannot cost a search - the request reaches
+     * the edge, the edge answers from cache, nobody pays SerpApi.
+     *
+     * A counter rides along with the clock because a timestamp alone is not
+     * unique: two calls can land in the same millisecond, and browsers
+     * deliberately coarsen timer resolution for privacy. */
+    params.set('_', Date.now().toString(36) + (++nonce).toString(36));
 
     return fetch(base + '/search?' + params.toString(), {
       headers: { 'Accept': 'application/json' }

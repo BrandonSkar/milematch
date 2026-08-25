@@ -208,6 +208,34 @@ test('return results cache separately from the departures they follow', async ()
 
 /* ── Caching ───────────────────────────────────────────────── */
 
+/* The app varies `_` on every request so a BROWSER never replays a stale copy
+ * of a fare. That must not reach SerpApi - the whole point is that it defeats
+ * the browser cache and only the browser cache. */
+test('a browser cache-buster reaches the edge without costing a search', async () => {
+  const url = uniqueSearch();
+  await worker.fetch(req(url + '&_=1111'), env, ctx);
+
+  const before = serpCalls;
+  const second = await worker.fetch(req(url + '&_=2222'), env, ctx);
+  assert.strictEqual(second.headers.get('X-MileMatch-Cache'), 'hit');
+  assert.strictEqual(serpCalls, before, 'a different _ must not spend a lookup');
+});
+
+/* Deploying new code does not clear the edge cache, so the cache key carries
+ * the payload shape. Otherwise a worker that just learned to send departure
+ * tokens keeps answering without them until the old entries expire. */
+test('the payload shape is part of the cache key, and is reported', async () => {
+  const health = await (await worker.fetch(req('https://w.dev/health'), env, ctx)).json();
+  assert.ok(health.payloadVersion, '/health should say which shape it speaks');
+
+  const url = uniqueSearch();
+  await worker.fetch(req(url), env, ctx);
+  const cached = [...store.keys()].filter((k) => k.includes(new URL(url).searchParams.get('departureDate')));
+  assert.ok(cached.length, 'the search should have been cached');
+  assert.ok(cached.every((k) => k.includes('__shape=' + health.payloadVersion)),
+    'and keyed on the shape it was built with');
+});
+
 test('an identical search is served from cache and costs nothing', async () => {
   const url = uniqueSearch();
   const first = await worker.fetch(req(url), env, ctx);

@@ -21,10 +21,13 @@ function loadPB() {
    'data/cards.js', 'js/engine.js', 'js/flights.js']
     .forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   ctx.PB.loadAirports();
-  return ctx.PB;
+  return ctx;
 }
 
-const PB = loadPB();
+/* The sandbox IS the window these scripts run against, so a test that needs to
+ * stub a global — `fetch`, say — sets it here rather than on PB. */
+const SANDBOX = loadPB();
+const PB = SANDBOX.PB;
 
 /* Objects built inside the vm carry the vm's prototypes, which deepStrictEqual
  * counts as a difference. Copy into this realm before comparing shapes. */
@@ -1002,4 +1005,42 @@ test('every airport row parses cleanly', () => {
     assert.ok(Number.isFinite(a.lat) && Math.abs(a.lat) <= 90, `${code} bad latitude`);
     assert.ok(Number.isFinite(a.lon) && Math.abs(a.lon) <= 180, `${code} bad longitude`);
   });
+});
+
+/* The worker answers with a six-hour Cache-Control to protect a shared search
+ * allowance, which also lets a browser replay a stale fare without ever asking
+ * the network. The worker strips `_` before building its own cache key, so
+ * varying it costs nothing - but only if the app actually sends it. */
+test('every live lookup varies a parameter the browser cache respects', async () => {
+  const calls = [];
+  const realFetch = SANDBOX.fetch;
+  SANDBOX.fetch = (url) => {
+    calls.push(String(url));
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ offers: [] }) });
+  };
+  try {
+    const q = { from: 'SEA', to: 'JFK', date: '2026-11-15', cabin: 'y', passengers: 1 };
+    const settings = { proxyUrl: 'https://w.example.dev' };
+    await PB.flights.searchLive(q, settings);
+    await PB.flights.searchLive(q, settings);
+  } finally {
+    SANDBOX.fetch = realFetch;
+  }
+
+  assert.strictEqual(calls.length, 2);
+  calls.forEach((u) => assert.ok(new URL(u).searchParams.get('_'), 'a buster must be sent'));
+  assert.notStrictEqual(
+    new URL(calls[0]).searchParams.get('_'),
+    new URL(calls[1]).searchParams.get('_'),
+    'and it has to differ, or the browser serves its stored copy again');
+
+  // Everything the fare actually depends on must still be identical.
+  const strip = (u) => {
+    const p = new URL(u).searchParams;
+    p.delete('_');
+    p.sort();
+    return p.toString();
+  };
+  assert.strictEqual(strip(calls[0]), strip(calls[1]),
+    'the buster is the ONLY difference, so the edge still answers from cache');
 });
