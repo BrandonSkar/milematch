@@ -811,6 +811,7 @@ test('every row shows when it leaves and lands, without being opened', maybe, as
   const rows = await evaluate(`
     [...document.querySelectorAll('#offers .offer')].map(o => ({
       when: (o.querySelector('.offer-when') || {}).textContent || '',
+      airline: (o.querySelector('.offer-airline') || {}).textContent || '',
       over: (o.querySelector('.offer-when sup') || {}).textContent || '',
       meta: o.querySelector('.offer-meta').textContent.replace(/\\s+/g,' '),
       collapsed: !o.classList.contains('is-selected')
@@ -818,12 +819,110 @@ test('every row shows when it leaves and lands, without being opened', maybe, as
   `);
 
   assert.strictEqual(rows.length, 2);
-  assert.match(rows[0].when, /7:18 AM.*10:13 AM/, 'times belong on the row itself');
+  assert.match(rows[0].when, /SEA\s*7:18 AM.*SNA\s*10:13 AM/,
+    'both airports and both times belong on the row itself');
+  assert.match(rows[0].airline, /Alaska/, 'with the airline leading it');
   assert.strictEqual(rows[0].over, '', 'a same-day flight says nothing about days');
 
   const redeye = rows[1];
   assert.ok(redeye.collapsed, 'and on rows nobody has opened');
-  assert.match(redeye.when, /7:35 PM.*5:16 AM/, 'first departure to last arrival');
+  assert.match(redeye.when, /ONT\s*7:35 PM.*MCO\s*5:16 AM/,
+    'origin and final destination, not the connection');
   assert.strictEqual(redeye.over, '+1', 'landing tomorrow has to be stated, not implied');
   assert.match(redeye.meta, /1 stop in PHX/, 'and a connection should name itself');
+});
+
+/* The row already says the airports and times, so a nonstop's single leg was
+ * repeating it verbatim. A connection is a different matter. */
+test('expanding a nonstop does not reprint the row above it', maybe, async () => {
+  const detail = await evaluate(`(() => {
+    const rows = [...document.querySelectorAll('#offers .offer')];
+    rows[0].click();
+    const sel = document.querySelector('.offer.is-selected');
+    return {
+      legs: sel.querySelectorAll('.leg').length,
+      only: (sel.querySelector('.leg-only') || {}).textContent || ''
+    };
+  })()`);
+  assert.strictEqual(detail.legs, 0, 'no per-leg line for a single-leg flight');
+  assert.match(detail.only, /AS 699/, 'only the flight number the row cannot carry');
+
+  const connecting = await evaluate(`(() => {
+    const rows = [...document.querySelectorAll('#offers .offer')];
+    rows[rows.length - 1].click();
+    const sel = document.querySelector('.offer.is-selected');
+    return {
+      legs: sel.querySelectorAll('.leg').length,
+      stop: (sel.querySelector('.leg-stop') || {}).textContent || ''
+    };
+  })()`);
+  assert.strictEqual(connecting.legs, 2, 'each hop of a connection is still shown');
+  assert.match(connecting.stop, /connection in PHX/);
+});
+
+/* "Fewest points" and "least cash" pull in opposite directions, and the best
+ * value is often neither. Ranking by one of them alone decided that trade for
+ * the user and never showed the alternative. */
+const readRanked = () => evaluate(`
+  [...document.querySelectorAll('#results > .result')].map(r => ({
+    program: r.querySelector('.result-program').textContent,
+    points: parseInt(r.querySelector('.result-cost').textContent.replace(/[^0-9]/g, ''), 10),
+    cash: parseInt((r.querySelector('.result-tax').textContent.match(/[0-9,]+/) || ['0'])[0]
+            .replace(/,/g, ''), 10),
+    cpp: parseFloat(r.querySelector('.result-cpp').textContent) || 0
+  }))
+`);
+
+const ascending = (xs) => xs.every((v, i) => i === 0 || xs[i - 1] <= v);
+const descending = (xs) => xs.every((v, i) => i === 0 || xs[i - 1] >= v);
+
+test('the redemption list sorts by points, by cash, and by value', maybe, async () => {
+  await evaluate(`(() => {
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    document.querySelectorAll('.balance-row input').forEach(el => {
+      if (el.value) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    set('#bal-MR', 400000);
+    document.querySelector('input[name=fareSource][value=manual]').click();
+    set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'j');
+    set('#cashInput', 1800);
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  })()`);
+
+  const buttons = await evaluate(`
+    [...document.querySelectorAll('.sort-btn')].map(b => b.dataset.sort)
+  `);
+  assert.deepStrictEqual([...buttons], ['value', 'points', 'cash']);
+
+  const byValue = await readRanked();
+  assert.ok(byValue.length > 3, 'need several options to tell an order from an accident');
+  assert.ok(descending(byValue.map((r) => r.cpp)), 'the default ranks best value first');
+
+  const clickSort = (k) =>
+    evaluate(`document.querySelector('.sort-btn[data-sort=${k}]').click()`);
+
+  await clickSort('points');
+  const byPoints = await readRanked();
+  assert.ok(ascending(byPoints.map((r) => r.points)), 'fewest points first');
+
+  await clickSort('cash');
+  const byCash = await readRanked();
+  assert.ok(ascending(byCash.map((r) => r.cash)), 'least cash out of pocket first');
+
+  // Same options throughout - a sort is a view, not a different question.
+  assert.strictEqual(byPoints.length, byValue.length);
+  assert.deepStrictEqual(
+    [...byCash.map((r) => r.program)].sort(),
+    [...byValue.map((r) => r.program)].sort());
+
+  await clickSort('value');
+  const back = await readRanked();
+  assert.deepStrictEqual([...back.map((r) => r.program)], [...byValue.map((r) => r.program)],
+    'and it is reversible');
 });

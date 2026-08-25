@@ -244,19 +244,22 @@ kbd {
   font-weight: 600; font-size: .9rem; margin-bottom: .12rem;
 }
 
-/* When the plane leaves and lands is the first thing anyone scans for, so it
-   leads the row and the airline follows it. Tabular figures keep the columns
-   from jittering between rows. */
+/* Airline first, then where and when — the whole row readable without opening
+   anything. Tabular figures keep the times from jittering between rows. */
 .offer-when {
-  font-family: var(--mono); font-size: .95rem; font-weight: 700;
-  font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text);
+  font-family: var(--mono); font-size: .92rem; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-dim);
 }
-.offer-when i { font-style: normal; color: var(--text-faint); margin: 0 .3rem; }
+.offer-when b { color: var(--text); font-weight: 700; }
+.offer-when i { font-style: normal; color: var(--text-faint); margin: 0 .4rem; }
 .offer-when sup {
   font-size: .62em; color: var(--warn); font-weight: 700;
   margin-left: .1rem; vertical-align: super;
 }
-.offer-airline { color: var(--text-dim); font-weight: 600; }
+.offer-airline { color: var(--text); font-weight: 700; font-size: .95rem; }
+
+/* A nonstop's flight number, the one thing the row above does not carry. */
+.leg-only { display: block; font-size: .74rem; color: var(--text-faint); }
 
 .offer-meta {
   display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
@@ -384,6 +387,26 @@ kbd {
   100% { box-shadow: 0 0 0 14px transparent; }
 }
 .flash { animation: flashRing 1.4s ease-out; }
+
+/* ── Sort control ────────────────────────────────────────────── */
+.sort-bar {
+  display: flex; align-items: center; gap: .35rem; flex-wrap: wrap;
+  margin: 0 0 .55rem;
+}
+.sort-bar > span {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-faint); margin-right: .15rem;
+}
+.sort-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--text-dim);
+  border-radius: 999px; padding: .22rem .65rem; font-size: .76rem;
+  font-weight: 600; cursor: pointer; transition: border-color .12s, color .12s;
+}
+.sort-btn:hover { color: var(--text); border-color: var(--text-faint); }
+.sort-btn.is-on {
+  color: var(--accent); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 /* ── Results ─────────────────────────────────────────────────── */
 /* ── Headline: the one answer, stated once ───────────────────── */

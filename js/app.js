@@ -775,15 +775,17 @@
     return Math.round(days);
   }
 
-  /** Departure and arrival for the whole itinerary, for the collapsed row. */
+  /** Where and when, for the collapsed row: SEA 7:18 AM → SNA 10:13 AM. */
   function whenLabel(segs) {
     var first = segs[0], last = segs[segs.length - 1];
     if (!first || !last) return '';
     var dep = clockTime(first.depart), arr = clockTime(last.arrive);
     if (!dep || !arr) return '';
     var over = dayOffset(first.depart, last.arrive);
-    return '<span class="offer-when">' + esc(dep) +
-      '<i>→</i>' + esc(arr) +
+    return '<span class="offer-when">' +
+      (first.from ? '<b>' + esc(first.from) + '</b> ' : '') + esc(dep) +
+      '<i>→</i>' +
+      (last.to ? '<b>' + esc(last.to) + '</b> ' : '') + esc(arr) +
       (over > 0 ? '<sup title="Arrives ' + over + ' day' + (over > 1 ? 's' : '') +
                   ' later">+' + over + '</sup>' : '') +
       '</span>';
@@ -851,8 +853,9 @@
 
       var h = '<span class="offer-row">' +
         '<span class="offer-main">' +
-          '<span class="offer-carrier">' + whenLabel(segs) +
+          '<span class="offer-carrier">' +
             '<span class="offer-airline">' + esc(o.carriers.join(', ')) + '</span>' +
+            whenLabel(segs) +
           '</span>' +
           '<span class="offer-meta">' + meta.join(' · ') +
             offerTags(o, q, cheapest) +
@@ -867,11 +870,16 @@
         '</span>' +
       '</span>';
 
-      /* Expanding the chosen flight adds the per-leg breakdown: which airport
-       * each hop uses, flight numbers, where the connection sits. */
+      /* Expanding adds only what the row above does NOT already say.
+       *
+       * A nonstop's single leg is the same airports and the same two times
+       * that now head the row, so repeating it was pure duplication - all it
+       * carried that the row did not was the flight number. Connections still
+       * get the full per-leg breakdown, because each hop is genuinely new
+       * information. */
       if (selected) {
         h += '<span class="offer-detail">';
-        if (segs.length) {
+        if (segs.length > 1) {
           segs.forEach(function (s, i) {
             h += '<span class="leg">' +
               '<b>' + esc(s.from || '?') + '</b> ' + esc(clockTime(s.depart)) +
@@ -885,6 +893,9 @@
               h += '<span class="leg-stop">connection in ' + esc(segs[i + 1].from || '?') + '</span>';
             }
           });
+        } else if (segs.length === 1) {
+          var only = [segs[0].carrierName, segs[0].number].filter(Boolean).join(' ');
+          if (only) h += '<span class="leg-only">' + esc(only) + '</span>';
         } else {
           h += '<span class="leg-stop">No itinerary detail for this fare.</span>';
         }
@@ -1052,9 +1063,13 @@
     if (!shown.length) {
       html += '<p class="empty">Nothing to show.</p>';
     } else {
-      var affordableShown = shown.filter(function (o) { return o.affordable; });
-      var lockedShown = shown.filter(function (o) { return !o.affordable; });
+      /* Options you cannot afford stay below the ones you can, whichever sort
+       * is chosen — a cheaper award you have no points for is not a better
+       * answer, it is a different problem. */
+      var affordableShown = sortOptions(shown.filter(function (o) { return o.affordable; }));
+      var lockedShown = sortOptions(shown.filter(function (o) { return !o.affordable; }));
 
+      html += sortBar();
       affordableShown.forEach(function (o, i) { html += renderOption(o, q, i === 0); });
 
       if (lockedShown.length) {
@@ -1087,6 +1102,15 @@
 
     host.innerHTML = html;
 
+    $$('.sort-btn', host).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        resultSort = btn.dataset.sort;
+        /* Re-render from the result already in hand: sorting is a view, not a
+         * new question, so it must not re-price or re-query anything. */
+        renderResults(r, q);
+      });
+    });
+
     var drop = $('#dropSimCards');
     if (drop) {
       drop.addEventListener('click', function () {
@@ -1103,6 +1127,37 @@
 
   function metric(label, value) {
     return '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
+  }
+
+  /* Three different questions, three different winners.
+   *
+   * "Fewest points" and "least cash" pull in opposite directions and the best
+   * value is often neither: on one real search LifeMiles wanted 28,000 more
+   * points than Iberia to save $192 in fees. Ranking by cents-per-point alone
+   * decided that trade for you and never showed the alternative. */
+  var RESULT_SORTS = {
+    value:  { label: 'Best value',    key: function (o) { return o.cpp == null ? -Infinity : o.cpp; }, desc: true },
+    points: { label: 'Fewest points', key: function (o) { return o.miles; } },
+    cash:   { label: 'Least cash',    key: function (o) { return o.outOfPocket || 0; } }
+  };
+  var resultSort = 'value';
+
+  function sortOptions(list) {
+    var s = RESULT_SORTS[resultSort] || RESULT_SORTS.value;
+    return list.slice().sort(function (a, b) {
+      var d = s.key(a) - s.key(b);
+      if (d) return s.desc ? -d : d;
+      // A stable tiebreak, so equal rows do not shuffle when you re-sort.
+      return (b.cpp || 0) - (a.cpp || 0);
+    });
+  }
+
+  function sortBar() {
+    return '<div class="sort-bar"><span>Sort by</span>' +
+      Object.keys(RESULT_SORTS).map(function (k) {
+        return '<button type="button" class="sort-btn' + (k === resultSort ? ' is-on' : '') +
+          '" data-sort="' + k + '">' + RESULT_SORTS[k].label + '</button>';
+      }).join('') + '</div>';
   }
 
   /* One line you can scan, with the detail folded away behind it. The old
