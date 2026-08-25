@@ -240,10 +240,28 @@ kbd {
 /* These were inline spans, which ran the carrier straight into the stop
    count - "Frontier1 stop". They need to be block-level. */
 .offer-carrier {
-  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
   font-weight: 600; font-size: .9rem; margin-bottom: .12rem;
 }
-.offer-meta { display: block; font-size: .76rem; color: var(--text-dim); }
+
+/* When the plane leaves and lands is the first thing anyone scans for, so it
+   leads the row and the airline follows it. Tabular figures keep the columns
+   from jittering between rows. */
+.offer-when {
+  font-family: var(--mono); font-size: .95rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text);
+}
+.offer-when i { font-style: normal; color: var(--text-faint); margin: 0 .3rem; }
+.offer-when sup {
+  font-size: .62em; color: var(--warn); font-weight: 700;
+  margin-left: .1rem; vertical-align: super;
+}
+.offer-airline { color: var(--text-dim); font-weight: 600; }
+
+.offer-meta {
+  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  font-size: .76rem; color: var(--text-dim);
+}
 
 .offer-tag {
   font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;

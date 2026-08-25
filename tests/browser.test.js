@@ -775,3 +775,55 @@ test('an out-of-date fare worker says so instead of hiding the returns', maybe, 
   assert.match(panel, /newer fare worker/i);
   assert.match(panel, /deploy/i, 'and it should say what to do about it');
 });
+
+/* Times are the first thing anyone scans a flight list for. They used to be
+ * hidden until you expanded a row, which made the list unscannable. */
+test('every row shows when it leaves and lands, without being opened', maybe, async () => {
+  await evaluate(`(() => {
+    const leg = (from, to, depart, arrive, name, number) =>
+      ({ from, to, depart, arrive, carrierName: name, number });
+    PB.flights.hasProxy = () => true;
+    PB.flights.searchLive = () => Promise.resolve([
+      { id: 'sa-0', price: 300, currency: 'USD', carriers: ['Alaska'], carrierCodes: ['AS'],
+        stops: 0, bags: {}, durationText: '2h 55m',
+        itineraries: [{ segments: [leg('SEA','SNA','2026-11-15 07:18','2026-11-15 10:13','Alaska','AS 699')] }] },
+      // A red-eye that lands the NEXT day, via a connection.
+      { id: 'sa-1', price: 460, currency: 'USD', carriers: ['American'], carrierCodes: ['AA'],
+        stops: 1, bags: {}, durationText: '6h 41m',
+        itineraries: [{ segments: [
+          leg('ONT','PHX','2026-11-15 19:35','2026-11-15 20:59','American','AA 2459'),
+          leg('PHX','MCO','2026-11-15 22:15','2026-11-16 05:16','American','AA 1187')] }] }
+    ]);
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    set('#fromInput', 'SEA'); set('#toInput', 'SNA'); set('#cabinInput', 'y');
+    set('#dateInput', '2026-11-15');
+    document.querySelector('input[name=fareSource][value=live]').click();
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  })()`);
+  await sleep(300);
+
+  const rows = await evaluate(`
+    [...document.querySelectorAll('#offers .offer')].map(o => ({
+      when: (o.querySelector('.offer-when') || {}).textContent || '',
+      over: (o.querySelector('.offer-when sup') || {}).textContent || '',
+      meta: o.querySelector('.offer-meta').textContent.replace(/\\s+/g,' '),
+      collapsed: !o.classList.contains('is-selected')
+    }))
+  `);
+
+  assert.strictEqual(rows.length, 2);
+  assert.match(rows[0].when, /7:18 AM.*10:13 AM/, 'times belong on the row itself');
+  assert.strictEqual(rows[0].over, '', 'a same-day flight says nothing about days');
+
+  const redeye = rows[1];
+  assert.ok(redeye.collapsed, 'and on rows nobody has opened');
+  assert.match(redeye.when, /7:35 PM.*5:16 AM/, 'first departure to last arrival');
+  assert.strictEqual(redeye.over, '+1', 'landing tomorrow has to be stated, not implied');
+  assert.match(redeye.meta, /1 stop in PHX/, 'and a connection should name itself');
+});

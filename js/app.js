@@ -760,6 +760,35 @@
     return h12 + ':' + m[2] + ' ' + suffix;
   }
 
+  /* Whole days between two provider timestamps.
+   *
+   * A red-eye that leaves at 10:15 PM and lands at 5:16 AM lands TOMORROW,
+   * and printing those two times side by side without saying so is the single
+   * most misleading thing a flight row can do. Both stamps carry a date, so
+   * compare the dates rather than guessing from the clock going backwards -
+   * a long-haul can cross two days, and a westbound can land before it left. */
+  function dayOffset(fromRaw, toRaw) {
+    var a = /(\d{4})-(\d{2})-(\d{2})/.exec(String(fromRaw || ''));
+    var b = /(\d{4})-(\d{2})-(\d{2})/.exec(String(toRaw || ''));
+    if (!a || !b) return 0;
+    var days = (Date.UTC(b[1], b[2] - 1, b[3]) - Date.UTC(a[1], a[2] - 1, a[3])) / 86400000;
+    return Math.round(days);
+  }
+
+  /** Departure and arrival for the whole itinerary, for the collapsed row. */
+  function whenLabel(segs) {
+    var first = segs[0], last = segs[segs.length - 1];
+    if (!first || !last) return '';
+    var dep = clockTime(first.depart), arr = clockTime(last.arrive);
+    if (!dep || !arr) return '';
+    var over = dayOffset(first.depart, last.arrive);
+    return '<span class="offer-when">' + esc(dep) +
+      '<i>→</i>' + esc(arr) +
+      (over > 0 ? '<sup title="Arrives ' + over + ' day' + (over > 1 ? 's' : '') +
+                  ' later">+' + over + '</sup>' : '') +
+      '</span>';
+  }
+
   /* Badges for the facts you would otherwise have to hunt for: what the fare
    * includes, and what it quietly does not.
    *
@@ -802,11 +831,19 @@
       btn.className = 'offer' + (selected ? ' is-selected' : '');
       btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
 
+      var segs = (o.itineraries && o.itineraries[0] && o.itineraries[0].segments) || [];
+
       /* Stops are said once: as a badge when it is a selling point, as text
-       * when it is a cost. Both at once was just the word twice. */
+       * when it is a cost. Both at once was just the word twice. Where a
+       * connection exists, name it - "1 stop in PHX" is a decision, "1 stop"
+       * is a riddle. */
       var meta = [];
       if (o.stops == null) meta.push('Stops unknown');
-      else if (o.stops > 0) meta.push(o.stops + ' stop' + (o.stops > 1 ? 's' : ''));
+      else if (o.stops > 0) {
+        var via = segs.slice(1).map(function (s) { return s.from; }).filter(Boolean);
+        meta.push(o.stops + ' stop' + (o.stops > 1 ? 's' : '') +
+                  (via.length ? ' in ' + esc(via.join(', ')) : ''));
+      }
       if (o.durationText) meta.push(esc(o.durationText));
 
       var total = tripTotal(o);
@@ -814,10 +851,12 @@
 
       var h = '<span class="offer-row">' +
         '<span class="offer-main">' +
-          '<span class="offer-carrier">' + esc(o.carriers.join(', ')) +
+          '<span class="offer-carrier">' + whenLabel(segs) +
+            '<span class="offer-airline">' + esc(o.carriers.join(', ')) + '</span>' +
+          '</span>' +
+          '<span class="offer-meta">' + meta.join(' · ') +
             offerTags(o, q, cheapest) +
           '</span>' +
-          '<span class="offer-meta">' + meta.join(' · ') + '</span>' +
         '</span>' +
         '<span class="offer-priceblock">' +
           '<span class="offer-price">' + PB.fmt.money(total) + '</span>' +
@@ -828,11 +867,9 @@
         '</span>' +
       '</span>';
 
-      /* Expand the chosen flight so picking one shows what you actually
-       * picked - times, airports, flight numbers - rather than just
-       * highlighting a row. */
+      /* Expanding the chosen flight adds the per-leg breakdown: which airport
+       * each hop uses, flight numbers, where the connection sits. */
       if (selected) {
-        var segs = (o.itineraries && o.itineraries[0] && o.itineraries[0].segments) || [];
         h += '<span class="offer-detail">';
         if (segs.length) {
           segs.forEach(function (s, i) {
