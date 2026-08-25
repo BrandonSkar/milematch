@@ -13,11 +13,13 @@
  * key, and the browser would block the cross-origin call anyway.
  *
  * Endpoints:
- *   GET /health  -> { ok, credentials, cached }
+ *   GET /health  -> { ok, credentials, keys, cached }
  *   GET /search  -> normalised flight offers
  *
- * Secret (npx wrangler secret put SERPAPI_KEY):
- *   SERPAPI_KEY
+ * Secrets (npx wrangler secret put NAME):
+ *   SERPAPI_KEYS  one key, or several comma-separated. Tried in order; the
+ *                 next is used when one runs out of searches.
+ *   SERPAPI_KEY   the older single-key name, still honoured.
  *
  * Vars (wrangler.toml):
  *   ALLOWED_ORIGIN  your Pages origin, comma separated, or * while developing
@@ -83,7 +85,8 @@ export default {
     if (url.pathname === '/health') {
       return json({
         ok: true,
-        credentials: Boolean(env.SERPAPI_KEY),
+        credentials: apiKeys(env).length > 0,
+        keys: apiKeys(env).length,
         provider: 'serpapi/google_flights',
         payloadVersion: PAYLOAD_VERSION,
         cacheHours: Number(env.CACHE_HOURS || 6),
@@ -109,15 +112,41 @@ export default {
   }
 };
 
-async function handleSearch(url, env, ctx, origin) {
-  if (!env.SERPAPI_KEY) {
-    throw new Error('SERPAPI_KEY is not set on this worker. Run: npx wrangler secret put SERPAPI_KEY');
+/* Every key this worker may spend, in the order they are tried.
+ *
+ * SERPAPI_KEYS is comma-separated so a key can be added or dropped without
+ * touching this file. SERPAPI_KEY is still honoured, so a worker deployed
+ * before rotation existed keeps working untouched.
+ *
+ * Trimmed because piping a value into `wrangler secret put` from PowerShell
+ * appends a newline, which SerpApi rejects as an invalid key with no hint that
+ * whitespace is the problem. */
+function apiKeys(env) {
+  const raw = [env.SERPAPI_KEYS, env.SERPAPI_KEY].filter(Boolean).join(',');
+  const out = [];
+  for (const part of raw.split(',')) {
+    const key = part.trim();
+    // A key repeated across both secrets must not be tried twice.
+    if (key && !out.includes(key)) out.push(key);
   }
+  return out;
+}
 
-  /* Trim the key. Piping a value into `wrangler secret put` from PowerShell
-   * appends a newline, which SerpApi rejects as an invalid key with no hint
-   * that whitespace is the problem. */
-  const apiKey = String(env.SERPAPI_KEY).trim();
+/* Whether a failure belongs to the key rather than to the request.
+ *
+ * Only these are worth spending another key on. A malformed search fails
+ * identically on every key, and retrying it would turn one bad request into
+ * three - burning the pool to produce the same error. */
+function keyIsSpent(status, error) {
+  if (status === 401 || status === 429) return true;
+  return /run out|limit|exceeded|invalid api key/i.test(error || '');
+}
+
+async function handleSearch(url, env, ctx, origin) {
+  const keys = apiKeys(env);
+  if (!keys.length) {
+    throw new Error('No SerpApi key is set on this worker. Run: npx wrangler secret put SERPAPI_KEYS');
+  }
 
   const p = url.searchParams;
   for (const key of ['origin', 'destination', 'departureDate']) {
@@ -127,7 +156,6 @@ async function handleSearch(url, env, ctx, origin) {
   const roundTrip = Boolean(p.get('returnDate'));
   const q = new URLSearchParams({
     engine: 'google_flights',
-    api_key: apiKey,
     departure_id: p.get('origin'),
     arrival_id: p.get('destination'),
     outbound_date: p.get('departureDate'),
@@ -151,9 +179,9 @@ async function handleSearch(url, env, ctx, origin) {
   const departureToken = p.get('departureToken');
   if (departureToken) q.set('departure_token', departureToken);
 
-  /* The free tier is 250 searches a month shared by everyone using the site,
-   * so identical searches must not each cost one. Cache on everything except
-   * the API key. */
+  /* Identical searches must not each cost one. The cache key is built from the
+   * INCOMING url, which never carries an api_key, so a search paid for by one
+   * key is afterwards served to all of them. */
   const cacheHours = Number(env.CACHE_HOURS || 6);
   const cacheKeyUrl = new URL(url.toString());
   cacheKeyUrl.searchParams.delete('_');
@@ -170,45 +198,54 @@ async function handleSearch(url, env, ctx, origin) {
     });
   }
 
-  const res = await fetch('https://serpapi.com/search.json?' + q.toString());
-  const text = await res.text();
+  /* Try each key in turn, moving to the next only when the key itself is
+   * spent. The last failure is remembered so that if every key is out, the
+   * message says so rather than reporting whatever the final one happened to
+   * say on its own. */
+  let lastError = '';
 
-  if (!res.ok) {
-    throw new Error(`SerpApi ${res.status}: ${text.slice(0, 300)}`);
+  for (let i = 0; i < keys.length; i++) {
+    q.set('api_key', keys[i]);
+    const res = await fetch('https://serpapi.com/search.json?' + q.toString());
+    const text = await res.text();
+
+    let data = null;
+    if (res.ok) {
+      try { data = JSON.parse(text); }
+      catch { throw new Error('SerpApi returned something that was not JSON.'); }
+    }
+
+    const error = data ? data.error : `SerpApi ${res.status}: ${text.slice(0, 200)}`;
+
+    if (error) {
+      if (keyIsSpent(res.status, error)) { lastError = error; continue; }
+      throw new Error(error);
+    }
+
+    const payload = JSON.stringify({ offers: normalize(data) });
+    const response = new Response(payload, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': `public, max-age=${cacheHours * 3600}`,
+        'X-MileMatch-Cache': 'miss',
+        // Which key answered, so rotation can be watched without logging keys.
+        'X-MileMatch-Key': String(i + 1),
+        ...cors(origin)
+      }
+    });
+    // Store without blocking the response.
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    return response;
   }
 
-  let data;
-  try { data = JSON.parse(text); }
-  catch { throw new Error('SerpApi returned something that was not JSON.'); }
-
-  if (data.error) {
-    // Name the two failures that actually happen, rather than passing through
-    // a message that doesn't say what to do about it.
-    if (/run out|limit|exceeded/i.test(data.error)) {
-      throw new Error(`Monthly fare-lookup allowance used up. ${data.error}`);
-    }
-    if (/invalid api key/i.test(data.error)) {
-      throw new Error('SerpApi rejected the stored key. Re-run worker/deploy.ps1 and ' +
-                      'choose "new" to replace it, checking it against ' +
-                      'https://serpapi.com/manage-api-key');
-    }
-    throw new Error(data.error);
+  const plural = keys.length > 1 ? `all ${keys.length} keys` : 'the stored key';
+  if (/invalid api key/i.test(lastError)) {
+    throw new Error(`SerpApi rejected ${plural}. Re-run worker/deploy.ps1 and choose ` +
+                    '"new" to replace them, checking each against ' +
+                    'https://serpapi.com/manage-api-key');
   }
-
-  const payload = JSON.stringify({ offers: normalize(data) });
-
-  const response = new Response(payload, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': `public, max-age=${cacheHours * 3600}`,
-      'X-MileMatch-Cache': 'miss',
-      ...cors(origin)
-    }
-  });
-  // Store without blocking the response.
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return response;
+  throw new Error(`Monthly fare-lookup allowance used up on ${plural}. ${lastError}`);
 }
 
 /* Flatten SerpApi's shape into what the app already renders. Normalising here

@@ -47,10 +47,19 @@ sign-in button appears to do nothing.
 Then create a token at <https://dash.cloudflare.com/profile/api-tokens>:
 **Create Token** → **Edit Cloudflare Workers** template → Continue → Create.
 
-### 2. SerpApi key
+### 2. SerpApi key(s)
 
 <https://serpapi.com/users/sign_up> — free, then copy your key from
 <https://serpapi.com/manage-api-key>.
+
+**You can use more than one.** Each free account gets its own 250 searches a
+month; the worker spends the first key until it runs out, then moves to the
+next by itself. The deploy script asks for keys until you press Enter on a
+blank prompt, and checks each one before storing it.
+
+> Multiple free accounts to raise a limit is the kind of thing SerpApi
+> [reserves the right](https://serpapi.com/legal) to act on. At one or two
+> users it is unlikely to draw attention; at any real volume, buy a plan.
 
 ### 3. Deploy
 
@@ -59,7 +68,7 @@ cd worker
 .\deploy.ps1
 ```
 
-It prompts for both keys, stores them as Worker secrets, deploys, checks
+It prompts for the keys, stores them as a Worker secret, deploys, checks
 `/health`, and writes the resulting URL into `data/config.js` for you.
 
 ### 4. Publish
@@ -76,9 +85,12 @@ Done. Anyone opening the site now gets live fares with zero setup.
 
 ```bash
 export CLOUDFLARE_API_TOKEN=...      # PowerShell: $env:CLOUDFLARE_API_TOKEN="..."
-npx wrangler secret put SERPAPI_KEY
+npx wrangler secret put SERPAPI_KEYS   # one key, or key1,key2,key3
 npx wrangler deploy
 ```
+
+`SERPAPI_KEY` (singular) still works and is tried last, so an older deploy
+keeps running untouched.
 
 `npx wrangler login` also works, but it needs a browser redirect back to
 `localhost:8976`; when that fails it times out after two minutes with no useful
@@ -90,6 +102,11 @@ error. The token avoids it.
 
 The allowance is shared by every visitor, so:
 
+- **More keys is more allowance.** `SERPAPI_KEYS` takes a comma-separated
+  list; each is spent in turn and `X-MileMatch-Key` on the response says which
+  one answered. A key that fails for any reason other than being spent is
+  reported immediately rather than burning the rest of the pool on the same
+  error.
 - **Identical searches are cached** for `CACHE_HOURS` (default 6). Same route,
   same dates, same cabin costs one search no matter how many people run it.
   Fares do move, so this is a trade-off rather than a free win — lower it if
@@ -108,7 +125,7 @@ or typing a price. Nothing breaks.
 
 | Route | Returns |
 |---|---|
-| `/health` | `{ ok, credentials, provider, cacheHours, originLocked }` |
+| `/health` | `{ ok, credentials, keys, provider, cacheHours, originLocked }` |
 | `/search` | `{ offers: [...] }`, already normalised for the app |
 
 `/search` parameters: `origin`, `destination`, `departureDate` (required);
@@ -135,9 +152,9 @@ cache separately, so re-opening the same one is free.
 npm run test:worker
 ```
 
-13 tests run the worker against a stubbed SerpApi — request mapping,
-normalisation, caching, the origin lock, and error handling — without spending
-any of your monthly searches.
+26 tests run the worker against a stubbed SerpApi — request mapping,
+normalisation, caching, the origin lock, key rotation, and error handling —
+without spending any of your monthly searches.
 
 ## Swapping providers
 

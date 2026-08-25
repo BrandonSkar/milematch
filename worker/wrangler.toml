@@ -20,5 +20,13 @@ ALLOWED_ORIGIN = "https://brandonskar.github.io"
 CACHE_HOURS = "6"
 
 # Secrets are NOT set here. Run once after obtaining a key:
-#   npx wrangler secret put SERPAPI_KEY
+#   npx wrangler secret put SERPAPI_KEYS
+#
+# The value is one key, or several comma-separated:  key1,key2,key3
+# They are tried in order, and the next is used when one runs out of searches.
+# Each free account gets its own 250/month, so three keys is three allowances.
+#
+# SERPAPI_KEY (singular) is still honoured and tried last, so a worker set up
+# before rotation existed keeps working without being touched.
+#
 # Free key: https://serpapi.com/users/sign_up

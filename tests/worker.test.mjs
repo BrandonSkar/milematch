@@ -284,11 +284,83 @@ test('running out of searches says so in plain language', async () => {
   assert.match((await r.json()).error, /allowance used up/i);
 });
 
+/* ── Key rotation ──────────────────────────────────────────────
+ *
+ * Several free keys are cheaper than one paid plan at this volume, but only if
+ * a spent key steps aside silently. These verify it does — and, just as
+ * importantly, that an ordinary bad request does NOT burn the whole pool. */
+
+const three = { ...env, SERPAPI_KEYS: 'k1,k2,k3', SERPAPI_KEY: '' };
+const OK = () => new Response(JSON.stringify(SERP_RESPONSE), { status: 200 });
+const OUT = () => new Response(JSON.stringify({ error: 'You have run out of searches' }), { status: 200 });
+const keyOf = (u) => new URL(u).searchParams.get('api_key');
+
+test('a spent key hands the search to the next one', async () => {
+  serpImpl = async (u) => (keyOf(u) === 'k1' ? OUT() : OK());
+  const r = await worker.fetch(req(uniqueSearch()), three, ctx);
+  serpImpl = async () => OK();
+
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.headers.get('X-MileMatch-Key'), '2', 'the second key answered');
+  assert.strictEqual(keyOf(lastSerpUrl), 'k2');
+  assert.strictEqual((await r.json()).offers.length, 3, 'and the results are intact');
+});
+
+test('a key SerpApi rejects is skipped rather than being fatal', async () => {
+  serpImpl = async (u) => (keyOf(u) === 'k1'
+    ? new Response(JSON.stringify({ error: 'Invalid API key' }), { status: 200 })
+    : OK());
+  const r = await worker.fetch(req(uniqueSearch()), three, ctx);
+  serpImpl = async () => OK();
+  assert.strictEqual(r.status, 200, 'one typo must not take the other keys down');
+  assert.strictEqual(r.headers.get('X-MileMatch-Key'), '2');
+});
+
+test('a bad request is not retried against every key', async () => {
+  serpImpl = async () => new Response(JSON.stringify({ error: 'Unsupported airport code' }), { status: 200 });
+  const before = serpCalls;
+  const r = await worker.fetch(req(uniqueSearch()), three, ctx);
+  serpImpl = async () => OK();
+
+  assert.strictEqual(serpCalls - before, 1, 'the same error on all three would spend three for nothing');
+  assert.match((await r.json()).error, /Unsupported airport code/);
+});
+
+test('when every key is out, the message says so', async () => {
+  serpImpl = async () => OUT();
+  const before = serpCalls;
+  const r = await worker.fetch(req(uniqueSearch()), three, ctx);
+  serpImpl = async () => OK();
+
+  assert.strictEqual(serpCalls - before, 3, 'each key is given its turn');
+  assert.match((await r.json()).error, /allowance used up on all 3 keys/i);
+});
+
+test('the older single-key secret still works on its own', async () => {
+  const r = await worker.fetch(req(uniqueSearch()), { ...env, SERPAPI_KEYS: '' }, ctx);
+  assert.strictEqual(r.status, 200, 'a worker deployed before rotation keeps working');
+  assert.strictEqual(keyOf(lastSerpUrl), 'test-key');
+});
+
+test('the same key in both secrets is only tried once', async () => {
+  serpImpl = async () => OUT();
+  const before = serpCalls;
+  await worker.fetch(req(uniqueSearch()), { ...env, SERPAPI_KEYS: 'dup', SERPAPI_KEY: 'dup' }, ctx);
+  serpImpl = async () => OK();
+  assert.strictEqual(serpCalls - before, 1);
+});
+
+test('whitespace around a pasted key is trimmed off', async () => {
+  await worker.fetch(req(uniqueSearch()), { ...env, SERPAPI_KEYS: ' k1 , k2 ', SERPAPI_KEY: '' }, ctx);
+  assert.strictEqual(keyOf(lastSerpUrl), 'k1', 'a newline from PowerShell would be rejected as invalid');
+});
+
 /* ── Health ────────────────────────────────────────────────── */
 
 test('health reports credentials and the origin lock', async () => {
   const h = await (await worker.fetch(req('https://w.dev/health'), env, ctx)).json();
   assert.strictEqual(h.credentials, true);
+  assert.strictEqual(h.keys, 1, "how many keys it can spend");
   assert.strictEqual(h.originLocked, true);
   assert.strictEqual(h.provider, 'serpapi/google_flights');
 });

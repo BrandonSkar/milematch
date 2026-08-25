@@ -15,6 +15,9 @@
 #      Register, then copy your key from https://serpapi.com/manage-api-key
 #      Free tier is 250 searches/month, 50/hour, shared by everyone using the
 #      site. The worker caches identical searches so repeats cost nothing.
+#
+#      You can paste MORE THAN ONE key. They are tried in order and the next
+#      is used when one runs out, so several free accounts add up.
 #   4. Run:  .\deploy.ps1
 #
 # Nothing is written to disk and no secret is echoed. Values you paste are held
@@ -95,37 +98,73 @@ if ($authenticated) {
     }
 }
 
-# Don't make someone re-paste a key that is already stored - this script gets
+# Don't make someone re-paste keys that are already stored - this script gets
 # re-run after fixable failures like a missing workers.dev subdomain.
 $existingSecrets = npx --yes wrangler secret list 2>&1 | Out-String
-$needKey = $true
+$needKeys = $true
 
 if ($existingSecrets -match 'SERPAPI_KEY') {
     Write-Host ""
-    Write-Host "A SerpApi key is already stored on this worker." -ForegroundColor Green
-    Write-Host "(If searches are failing with 'Invalid API key', replace it.)"
-    $replace = Read-Host "  Press Enter to keep it, or type 'new' to replace"
-    if ($replace -ne 'new') { $needKey = $false }
+    Write-Host "SerpApi key(s) are already stored on this worker." -ForegroundColor Green
+    Write-Host "(Replace them to fix an 'Invalid API key' error, or to add another key.)"
+    $replace = Read-Host "  Press Enter to keep them, or type 'new' to replace"
+    if ($replace -ne 'new') { $needKeys = $false }
 }
 
-if ($needKey) {
+if ($needKeys) {
     Write-Host ""
-    Write-Host "SerpApi key - the long hex string from https://serpapi.com/manage-api-key"
+    Write-Host "SerpApi keys - the long hex string from https://serpapi.com/manage-api-key"
     Write-Host "Nothing appears as you paste. That is deliberate; paste and press Enter."
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
-        $serpKey = (Read-Secret "  API key").Trim()
+    Write-Host ""
+    Write-Host "Each free account gets 250 searches a month. Paste as many keys as you"
+    Write-Host "have: the worker spends the first until it runs out, then moves to the"
+    Write-Host "next by itself. Press Enter on a blank prompt when you are done."
+
+    $keys = @()
+    $attempts = 0
+
+    while ($true) {
+        $attempts++
+        if ($attempts -gt 12) { throw "Too many attempts without a usable key." }
+
+        $label = "  API key #" + ($keys.Count + 1)
+        if ($keys.Count -gt 0) { $label = $label + " (Enter to finish)" }
+        $serpKey = (Read-Secret $label).Trim()
+
         if (-not $serpKey) {
+            if ($keys.Count -gt 0) { break }
             Write-Host "  Nothing was entered. If Ctrl+V does nothing, try right-click to paste." -ForegroundColor Yellow
             continue
         }
+        if ($keys -contains $serpKey) {
+            Write-Host "  Already in the list - a duplicate would just be tried twice." -ForegroundColor Yellow
+            continue
+        }
+
         Write-Host "  Checking the key with SerpApi..."
-        if (Test-SerpKey $serpKey) { break }
-        if ($attempt -eq 3) { throw "Could not verify a SerpApi key after 3 attempts." }
+        if (Test-SerpKey $serpKey) {
+            $keys += $serpKey
+        } else {
+            Write-Host "  Not added. Paste a different one, or press Enter to move on." -ForegroundColor Yellow
+        }
     }
 
+    if ($keys.Count -eq 0) { throw "No usable SerpApi key was entered." }
+
     Write-Host ""
-    Write-Host "Storing the secret on the worker..."
-    $serpKey | npx --yes wrangler secret put SERPAPI_KEY
+    Write-Host ("Storing {0} key(s) on the worker..." -f $keys.Count)
+    ($keys -join ',') | npx --yes wrangler secret put SERPAPI_KEYS
+
+    # The pre-rotation secret is still honoured, and is tried AFTER these. A
+    # stale value there costs one wasted attempt once everything else is spent,
+    # so say it is there rather than silently leaving it to confuse a later
+    # "invalid key" message.
+    if ($existingSecrets -match 'SERPAPI_KEY(?!S)') {
+        Write-Host ""
+        Write-Host "Note: the older SERPAPI_KEY secret is still set, and is tried last." -ForegroundColor Yellow
+        Write-Host "If it holds a key you no longer use, remove it with:"
+        Write-Host "    npx wrangler secret delete SERPAPI_KEY"
+    }
 }
 
 Write-Host ""
