@@ -15,18 +15,11 @@ window.PB = window.PB || {};
      * { id: number } and so do the tests; wrapping every amount in an object
      * to carry one date would ripple through all of it for no gain. */
     balanceUpdated: {},    // { UR: '2026-08-25', ... }
-    /* What each airport costs to use, before any fare. Keyed by IATA code and
-     * split by which end of the trip it is: parking and fuel only apply where
-     * your car is. */
-    ground: { origin: {}, destination: {} },
     simulatedCards: [],    // card ids whose welcome bonus is being modelled
     customCards: [],       // user-defined cards
     settings: {
       proxyUrl: '',
       fareSource: 'paste',  // 'paste' | 'manual' | 'estimate' | 'live'
-      /* What an hour of driving and a mile of fuel are worth, used to rank
-       * airports on the whole trip rather than the ticket. */
-      drive: { perHour: 25, perMile: 0.20, mph: 45 },
       hideUnaffordable: false,
       iosNoticeDismissed: false
     },

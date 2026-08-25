@@ -104,17 +104,6 @@
       </label>
     </div>
 
-    <details class="ground-field" id="groundField" hidden>
-      <summary>Getting to the airport<span id="groundSummary"></span></summary>
-      <p class="hint">
-        The cheapest fare is regularly not the cheapest trip. Put in what each
-        airport actually costs you to use and the comparison is ranked on the
-        total rather than the ticket. A blank row counts as free.
-      </p>
-      <div id="groundRows"></div>
-      <p class="hint" id="groundRates"></p>
-    </details>
-
     <div class="toggle-row">
       <label class="toggle">
         <input type="checkbox" id="roundTripInput" checked>
@@ -312,31 +301,6 @@
 <!-- ────────────────────────── SETTINGS ────────────────────────── -->
 <section class="panel" id="panel-settings" role="tabpanel">
   <div class="card">
-    <h2>What driving is worth</h2>
-    <p class="hint">
-      Used to rank airports on what the whole trip costs rather than the fare
-      alone. The hourly figure is what an hour behind the wheel is worth to you
-      — not your salary, since a drive was never billable. The mileage figure is
-      fuel and wear, not the IRS rate, which folds in costs you pay whether the
-      car moves or not.
-    </p>
-    <div class="grid grid-4">
-      <label class="field">
-        <span>Per hour driving</span>
-        <div class="input-prefix">
-          <em>$</em><input id="drivePerHour" type="number" min="0" step="1" placeholder="25">
-        </div>
-      </label>
-      <label class="field">
-        <span>Per mile, fuel and wear</span>
-        <div class="input-prefix">
-          <em>$</em><input id="drivePerMile" type="number" min="0" step="0.01" placeholder="0.20">
-        </div>
-      </label>
-    </div>
-  </div>
-
-  <div class="card">
     <h2>Live fare lookup</h2>
     <p class="hint" id="proxyIntro"></p>
     <div class="row">
@@ -403,7 +367,6 @@
 <script src="data/cards.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/flights.js"></script>
-<script src="js/drive.js"></script>
 <script src="js/balances.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app.js"></script>

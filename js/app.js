@@ -40,8 +40,6 @@
     bindIosInstallNotice();
 
     restoreSearchForm();
-    renderAirportChips();
-    renderGroundRows();
     renderBalances();
     renderCards();
     renderCardSimSummary();
@@ -441,6 +439,9 @@
     updateAirportHints();
     updateFiltersNote();
     if ($('#airlineChips').children.length) renderAirlineChips();
+    /* The chips ARE the selection, so every restore has to repaint them -
+     * boot, an imported backup, and a reset all land here. */
+    renderAirportChips();
   }
 
   /** Real balances plus any credit-card bonuses being simulated. */
@@ -475,7 +476,7 @@
 
     /* Every origin against every destination. Same-airport pairs are dropped
      * inside combos(), so an overlapping selection is not an error. */
-    var combos = PB.drive.combos(q.origins, q.destinations);
+    var combos = PB.flights.combos(q.origins, q.destinations);
     if (!combos.length) {
       setStatus('Those selections only pair an airport with itself.', 'err');
       return;
@@ -1453,25 +1454,6 @@
   /* ═══════════════════════ Settings tab ═══════════════════════ */
 
   function bindSettings() {
-    /* Rates that decide whether a longer drive is worth it. Changing one
-     * re-ranks whatever comparison is on screen, since a different value on
-     * an hour of driving can change which airport wins. */
-    [['#drivePerHour', 'perHour'], ['#drivePerMile', 'perMile']].forEach(function (pair) {
-      var el = $(pair[0]);
-      if (!el) return;
-      var current = PB.drive.rates(state.settings)[pair[1]];
-      if (current != null) el.value = current;
-      el.addEventListener('input', function () {
-        var patch = {};
-        var n = parseFloat(this.value);
-        // A blank or nonsense box falls back to the default, never to zero.
-        patch[pair[1]] = (isFinite(n) && n >= 0) ? n : PB.drive.DEFAULTS[pair[1]];
-        PB.store.patch({ settings: { drive: patch } });
-        renderGroundSummary();
-        if (comboRows.length) renderComboResults();
-      });
-    });
-
     var proxy = $('#proxyInput');
     proxy.value = state.settings.proxyUrl || '';
     proxy.addEventListener('change', function () {
@@ -1529,7 +1511,7 @@
       try {
         state = PB.store.importJSON(area.value);
         renderBalances(); renderCards(); renderCardSimSummary();
-        updateBalanceChip(); restoreSearchForm(); renderAirportChips(); renderGroundRows(); renderAirportChips(); renderGroundRows();
+        updateBalanceChip(); restoreSearchForm();
         area.hidden = true;
         alert('Backup restored.');
       } catch (e) {
@@ -1632,7 +1614,6 @@
 
   function afterAirportChange() {
     renderAirportChips();
-    renderGroundRows();
     updateAirportHints();
     persistSearchForm();
   }
@@ -1723,7 +1704,7 @@
   function updateComboNote() {
     var el = $('#comboCost');
     if (!el) return;
-    var combos = PB.drive.combos(airportsOn('from'), airportsOn('to'));
+    var combos = PB.flights.combos(airportsOn('from'), airportsOn('to'));
     var live = ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value === 'live';
 
     if (combos.length > 1 && live) {
@@ -1740,126 +1721,11 @@
     }
   }
 
-  /* ── What each airport costs before the fare ──────────────────── */
-
-  function groundEntry(which, code) {
-    var side = (state.ground && state.ground[which]) || {};
-    return side[code] || {};
-  }
-
-  function setGround(which, code, field, value) {
-    if (!state.ground) state.ground = { origin: {}, destination: {} };
-    if (!state.ground[which]) state.ground[which] = {};
-    if (!state.ground[which][code]) state.ground[which][code] = {};
-    var n = parseFloat(value);
-    if (!isFinite(n) || n < 0) delete state.ground[which][code][field];
-    else state.ground[which][code][field] = n;
-    PB.store.patch({ ground: state.ground });
-  }
-
-  function groundRow(which, code, fields) {
-    var row = document.createElement('div');
-    row.className = 'ground-row';
-
-    var label = document.createElement('span');
-    label.className = 'gr-code';
-    label.textContent = code;
-    var known = PB.airports[code];
-    if (known) label.title = known.city + ', ' + known.country;
-    row.appendChild(label);
-
-    fields.forEach(function (f) {
-      var wrap = document.createElement('label');
-      var cap = document.createElement('span');
-      cap.textContent = f.label;
-      var input = document.createElement('input');
-      input.type = 'number';
-      input.min = '0';
-      input.step = '1';
-      input.placeholder = f.placeholder || '0';
-      input.id = 'gr-' + which + '-' + code + '-' + f.key;
-      var existing = groundEntry(which, code)[f.key];
-      if (existing != null) input.value = existing;
-
-      input.addEventListener('input', function () {
-        setGround(which, code, f.key, this.value);
-        renderGroundSummary();
-        // Re-rank live: changing a parking charge can change the winner.
-        if (comboRows.length) renderComboResults();
-      });
-      wrap.appendChild(cap);
-      wrap.appendChild(input);
-      row.appendChild(wrap);
-    });
-    return row;
-  }
-
-  function renderGroundRows() {
-    var host = $('#groundRows');
-    var field = $('#groundField');
-    if (!host || !field) return;
-
-    var origins = airportsOn('from');
-    var dests = airportsOn('to');
-    host.innerHTML = '';
-
-    if (!origins.length && !dests.length) { field.hidden = true; return; }
-    field.hidden = false;
-
-    function section(title, which, codes, fields) {
-      if (!codes.length) return;
-      var h = document.createElement('p');
-      h.className = 'ground-head';
-      h.textContent = title;
-      host.appendChild(h);
-      codes.forEach(function (c) { host.appendChild(groundRow(which, c, fields)); });
-    }
-
-    section('Driving to', 'origin', origins, [
-      { key: 'driveMinutes', label: 'Drive (min, each way)', placeholder: '45' },
-      { key: 'parking', label: 'Parking, whole trip ($)', placeholder: '80' }
-    ]);
-    section('Getting from', 'destination', dests, [
-      { key: 'driveMinutes', label: 'To where you are going (min)', placeholder: '30' },
-      { key: 'extraCost', label: 'Extra transport ($)', placeholder: '40' }
-    ]);
-
-    renderGroundSummary();
-  }
-
-  function renderGroundSummary() {
-    var rates = $('#groundRates');
-    if (rates) {
-      var r = PB.drive.rates(state.settings);
-      rates.innerHTML = 'Valued at <b>$' + r.perHour + '/hour</b> of driving and <b>$' +
-        r.perMile.toFixed(2) + '/mile</b> for fuel and wear, both changeable in ' +
-        'Settings. Driving is counted in each direction; parking is not.';
-    }
-    var sum = $('#groundSummary');
-    if (!sum) return;
-    var origins = airportsOn('from');
-    var filled = origins.filter(function (c) {
-      var e = groundEntry('origin', c);
-      return e.driveMinutes != null || e.parking != null;
-    });
-    sum.textContent = origins.length
-      ? ' (' + filled.length + ' of ' + origins.length + ' filled in)'
-      : '';
-  }
-
   /* ── Searching every pair ─────────────────────────────────────── */
 
   var comboStop = false;
   var comboRows = [];
   var comboPicked = null;
-
-  function comboGround(row) {
-    return PB.drive.groundCost(
-      groundEntry('origin', row.from),
-      groundEntry('destination', row.to),
-      state.settings
-    );
-  }
 
   function rankedCombos() {
     var priced = comboRows.map(function (row) {
@@ -1867,11 +1733,10 @@
       return {
         from: row.from, to: row.to, error: row.error,
         fare: best ? best.price : null,
-        offers: row.offers,
-        ground: comboGround(row)
+        offers: row.offers
       };
     });
-    return PB.drive.markCheapestFare(PB.drive.rank(priced));
+    return PB.flights.rankCombos(priced);
   }
 
   function renderComboProgress(p) {
@@ -1908,13 +1773,7 @@
     }
   }
 
-  function fmtMins(m) {
-    m = Math.round(m);
-    if (m < 60) return m + 'm';
-    var h = Math.floor(m / 60);
-    var r = m % 60;
-    return r ? h + 'h' + r + 'm' : h + 'h';
-  }
+
 
   function renderComboResults() {
     var host = $('#comboList');
@@ -1933,30 +1792,18 @@
       b.className = 'combo' + (r.rank === 1 ? ' is-best' : '') +
                     (comboPicked === r.from + r.to ? ' is-picked' : '');
 
-      var tags = '';
-      if (r.rank === 1) tags += '<span class="combo-tag best">Best trip</span>';
-      /* The entire reason this feature exists: the cheapest ticket lost once
-       * getting to its airport was priced. Say it outright rather than leaving
-       * it to be inferred from two numbers. */
-      if (r.cheapestFare && r.rank !== 1) {
-        tags += '<span class="combo-tag fare">Cheapest fare, costlier trip</span>';
-      }
-
-      var g = r.ground;
-      var parts = ['fare $' + Math.round(r.fare)];
-      if (g.origin.minutes) parts.push('drive ' + fmtMins(g.origin.minutes) + ' each way');
-      if (g.origin.parking) parts.push('park $' + Math.round(g.origin.parking));
-      if (g.origin.fuel) parts.push('gas $' + Math.round(g.origin.fuel));
-      if (g.destination.total) parts.push('far end $' + Math.round(g.destination.total));
+      var tags = r.rank === 1 ? '<span class="combo-tag best">Cheapest</span>' : '';
+      var carrier = r.offers && r.offers.length ? PB.flights.cheapest(r.offers) : null;
 
       b.innerHTML =
         '<span class="combo-top">' +
           '<span class="combo-route">' + esc(r.from) + ' → ' + esc(r.to) + '</span>' +
           tags +
-          '<span class="combo-allin">$' + Math.round(r.allIn) + '</span>' +
+          '<span class="combo-allin">$' + Math.round(r.fare) + '</span>' +
         '</span>' +
-        '<span class="combo-parts">' + esc(parts.join(' · ')) +
-          (r.overBest > 0 ? '  —  $' + Math.round(r.overBest) + ' more than the best' : '') +
+        '<span class="combo-parts">' +
+          esc(carrier && carrier.carriers ? carrier.carriers.join(', ') : 'cheapest fare') +
+          (r.overBest > 0 ? '  —  $' + Math.round(r.overBest) + ' more than ' + esc(ranked[0].from) : '') +
         '</span>';
 
       b.addEventListener('click', function () {

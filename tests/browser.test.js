@@ -327,22 +327,6 @@ test('what a multi-airport search will cost is stated before it is spent', maybe
   assert.match(note.text, /4 lookups/, 'and it says what that costs, before spending it');
 });
 
-test('getting to the airport is asked about once a code is picked', maybe, async () => {
-  await clearSides();
-  await evaluate(`document.querySelector('#fromInput').focus()`);
-  await typeText('sea');
-
-  const ground = await evaluate(`({
-    hidden: document.querySelector('#groundField').hidden,
-    codes: [...document.querySelectorAll('#groundRows .gr-code')].map(e => e.textContent),
-    hasDrive: !!document.querySelector('#gr-origin-SEA-driveMinutes'),
-    hasParking: !!document.querySelector('#gr-origin-SEA-parking')
-  })`);
-  assert.strictEqual(ground.hidden, false);
-  assert.deepStrictEqual(ground.codes, ['SEA']);
-  assert.ok(ground.hasDrive && ground.hasParking, 'both figures the origin end needs');
-});
-
 /* The other regression: the Google Flights href only refreshed when the
  * airport fields changed, so date edits never reached it. */
 test('the Google Flights link tracks every field that feeds it', maybe, async () => {

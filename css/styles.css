@@ -692,33 +692,7 @@ footer {
 }
 .apt-chip button:hover { color: var(--warn); }
 
-/* ── What an airport costs you before the fare ────────────────── */
-.ground-field {
-  border: 1px solid var(--line); border-radius: 8px;
-  padding: .6rem .8rem; margin-bottom: .9rem; background: var(--bg-elev-2);
-}
-.ground-field > summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
-.ground-field > summary #groundSummary {
-  font-weight: 400; color: var(--text-faint); font-size: .78rem; margin-left: .5rem;
-}
-.ground-row {
-  display: grid; grid-template-columns: 3.4rem 1fr 1fr; gap: .5rem;
-  align-items: center; margin-bottom: .45rem;
-}
-.ground-row .gr-code { font-family: var(--mono); font-weight: 700; font-size: .85rem; }
-.ground-row label { display: flex; flex-direction: column; gap: .15rem; }
-.ground-row label span { font-size: .66rem; color: var(--text-faint); }
-.ground-row input {
-  font-family: var(--mono); text-align: right; font-size: .82rem;
-  background: var(--bg-elev); border: 1px solid var(--line);
-  border-radius: 6px; padding: .3rem .45rem; color: var(--text);
-}
-.ground-head {
-  font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--text-faint); margin: .6rem 0 .35rem;
-}
-
-/* ── Airport pairs, ranked by what the trip really costs ───────── */
+/* ── Airport pairs, ranked by fare ─────────────────────────────── */
 .combo-list { display: flex; flex-direction: column; gap: .5rem; }
 
 .combo {
@@ -739,9 +713,6 @@ footer {
   padding: .12rem .4rem; border-radius: 4px; font-weight: 700;
 }
 .combo-tag.best { background: color-mix(in srgb, var(--great) 22%, transparent); color: var(--great); }
-/* The whole point of the feature: this one had the cheapest ticket and still
- * lost. Worth calling out by name rather than leaving it to be inferred. */
-.combo-tag.fare { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
 .combo-parts {
   font-family: var(--mono); font-size: .72rem; color: var(--text-faint);
   margin-top: .3rem;
@@ -758,6 +729,5 @@ footer {
 .combo-progress .bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 
 @media (max-width: 560px) {
-  .ground-row { grid-template-columns: 2.8rem 1fr 1fr; gap: .35rem; }
   .combo-allin { margin-left: 0; }
 }

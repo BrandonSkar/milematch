@@ -548,4 +548,48 @@ window.PB = window.PB || {};
     return best;
   };
 
+
+  /* Every airport pair worth searching.
+   *
+   * Not N-squared: if you drive to an airport and park, you fly back into that
+   * same airport, because your car is in the lot. A pair that is the same
+   * airport at both ends is dropped rather than refused - with several
+   * selected on each side that is a normal overlap, not a mistake.
+   */
+  PB.flights.combos = function (origins, destinations) {
+    var out = [];
+    (origins || []).forEach(function (from) {
+      (destinations || []).forEach(function (to) {
+        if (from && to && from !== to) out.push({ from: from, to: to });
+      });
+    });
+    return out;
+  };
+
+  /**
+   * Rank searched pairs by their cheapest fare.
+   *
+   * Each row carries how much more it costs than the winner, which is the
+   * number worth seeing: two airports within twenty dollars of each other is
+   * a different decision from two a hundred apart.
+   *
+   * A pair that came back without a usable fare is left out rather than
+   * ranked at zero - no fare means nothing to compare, not a free flight.
+   */
+  PB.flights.rankCombos = function (rows) {
+    var priced = (rows || []).filter(function (r) {
+      return r && isFinite(r.fare) && r.fare > 0;
+    }).slice();
+
+    priced.sort(function (a, b) { return a.fare - b.fare; });
+
+    var best = priced.length ? priced[0].fare : 0;
+    return priced.map(function (r, i) {
+      return Object.assign({}, r, {
+        rank: i + 1,
+        overBest: Math.round((r.fare - best) * 100) / 100
+      });
+    });
+  };
+
 })(window.PB);

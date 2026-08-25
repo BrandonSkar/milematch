@@ -18,8 +18,7 @@ function loadPB() {
   ctx.window = ctx;
   vm.createContext(ctx);
   ['data/config.js', 'data/airports.js', 'data/programs.js', 'data/charts.js',
-   'data/cards.js', 'js/engine.js', 'js/flights.js', 'js/balances.js',
-   'js/drive.js']
+   'data/cards.js', 'js/engine.js', 'js/flights.js', 'js/balances.js']
     .forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   ctx.PB.loadAirports();
   return ctx;
@@ -1062,106 +1061,57 @@ test('a balance says how old it is, and when it is too old to trust', () => {
     'a balance with no date is exactly as untrustworthy as an ancient one');
 });
 
-/* ── Getting to the airport ────────────────────────────────────
+/* ── Comparing several airports ────────────────────────────────
  *
- * The point of the whole multi-airport feature: the cheapest fare and the
- * cheapest trip are frequently not the same flight. */
-
-test('driving to a further airport is priced, both ways', () => {
-  // 90 minutes each way, $80 to park. At the defaults: 3h of driving at $25,
-  // 135 miles of it at $0.20.
-  const c = PB.drive.originCost({ driveMinutes: 90, parking: 80 });
-  assert.strictEqual(c.time, 75, '1.5h each way at $25');
-  assert.strictEqual(c.fuel, 27, '1.5h at 45mph = 67.5mi each way, doubled, at $0.20');
-  assert.strictEqual(c.parking, 80, 'parking is for the trip, not per drive');
-  assert.strictEqual(c.total, 182);
-});
-
-test('an airport you live next to costs almost nothing to reach', () => {
-  // 12.5 of time, 4.50 of fuel, and the parking dwarfs both.
-  const c = PB.drive.originCost({ driveMinutes: 15, parking: 60 });
-  assert.strictEqual(c.time, 12.5);
-  assert.strictEqual(c.fuel, 4.5);
-  assert.strictEqual(c.total, 77);
-});
-
-test('the destination end has no parking and no fuel', () => {
-  // Your car is at home. What differs is the time to reach town, and any
-  // standing difference in what that leg costs.
-  const c = PB.drive.destinationCost({ driveMinutes: 60, extraCost: 40 });
-  assert.strictEqual(c.time, 50, 'an hour each way at $25');
-  assert.strictEqual(c.extra, 40);
-  assert.strictEqual(c.total, 90);
-  assert.strictEqual(c.fuel, undefined, 'no fuel line at the far end');
-});
-
-test('missing or nonsense ground figures cost zero, not NaN', () => {
-  assert.strictEqual(PB.drive.originCost(null).total, 0);
-  assert.strictEqual(PB.drive.originCost({ driveMinutes: '', parking: '' }).total, 0);
-  assert.strictEqual(PB.drive.originCost({ driveMinutes: 'soon', parking: -5 }).total, 0,
-    'a negative parking charge is not a discount');
-});
-
-test('the rates can be overridden, and a blank one falls back', () => {
-  const s = { drive: { perHour: 100, perMile: '', mph: 45 } };
-  const c = PB.drive.originCost({ driveMinutes: 60, parking: 0 }, s);
-  assert.strictEqual(c.time, 200, 'two hours at the rate that was set');
-  assert.strictEqual(c.fuel, 18, 'and the default per-mile, since none was given');
-});
+ * Picking a few origins and a few destinations and searching every pairing.
+ * The ranking is on fare alone: an earlier version priced the driving too,
+ * which was removed. */
 
 test('every airport pair is searched, and same-airport pairs are dropped', () => {
-  const c = PB.drive.combos(['DEN', 'COS'], ['PHX', 'LAS']);
+  const c = PB.flights.combos(['DEN', 'COS'], ['PHX', 'LAS']);
   assert.strictEqual(c.length, 4);
-  // Compared field by field: these objects are built inside the vm sandbox,
-  // so they are structurally identical but not reference-equal to ours.
+  // Compared field by field: these are built inside the vm sandbox, so they
+  // are structurally identical to ours but not reference-equal.
   assert.strictEqual(c[0].from, 'DEN');
   assert.strictEqual(c[0].to, 'PHX');
 
-  const overlap = PB.drive.combos(['DEN', 'PHX'], ['PHX', 'LAS']);
+  const overlap = PB.flights.combos(['DEN', 'PHX'], ['PHX', 'LAS']);
   assert.strictEqual(overlap.length, 3, 'PHX→PHX is an overlap, not an error');
   assert.ok(!overlap.some((p) => p.from === p.to));
 });
 
-test('the cheapest fare is not always the cheapest trip', () => {
-  const ranked = PB.drive.markCheapestFare(PB.drive.rank([
-    // The bargain fare, two hours away, with airport parking.
-    { from: 'DEN', to: 'PHX', fare: 261,
-      ground: PB.drive.groundCost({ driveMinutes: 110, parking: 98 }, null, null) },
-    // Pricier ticket from the airport down the road.
-    { from: 'COS', to: 'PHX', fare: 298,
-      ground: PB.drive.groundCost({ driveMinutes: 25, parking: 56 }, null, null) }
-  ]));
-
-  assert.strictEqual(ranked[0].from, 'COS', 'the nearer airport wins the trip');
-  assert.strictEqual(ranked[1].from, 'DEN');
-  assert.ok(ranked[1].cheapestFare, 'even though Denver had the cheaper ticket');
-  assert.ok(!ranked[0].cheapestFare);
-  assert.ok(ranked[1].overBest > 0, 'and the gap is stated, so the drive can be judged');
+test('an empty side produces nothing to search', () => {
+  assert.strictEqual(PB.flights.combos([], ['PHX']).length, 0);
+  assert.strictEqual(PB.flights.combos(['DEN'], []).length, 0);
+  assert.strictEqual(PB.flights.combos(null, null).length, 0);
 });
 
-test('ranking states how much more each option costs than the best', () => {
-  const ranked = PB.drive.rank([
-    { from: 'A', to: 'Z', fare: 300, ground: { total: 50 } },
-    { from: 'B', to: 'Z', fare: 200, ground: { total: 100 } },
-    { from: 'C', to: 'Z', fare: 500, ground: { total: 0 } }
+test('pairs rank by fare, and say how much more than the cheapest', () => {
+  const ranked = PB.flights.rankCombos([
+    { from: 'A', to: 'Z', fare: 300 },
+    { from: 'B', to: 'Z', fare: 200 },
+    { from: 'C', to: 'Z', fare: 500 }
   ]);
-  assert.deepStrictEqual(ranked.map((r) => r.allIn), [300, 350, 500]);
-  assert.deepStrictEqual(ranked.map((r) => r.overBest), [0, 50, 200]);
+  assert.deepStrictEqual(ranked.map((r) => r.from), ['B', 'A', 'C']);
+  assert.deepStrictEqual(ranked.map((r) => r.overBest), [0, 100, 300]);
   assert.deepStrictEqual(ranked.map((r) => r.rank), [1, 2, 3]);
 });
 
-test('a combination that never came back with a fare is left out', () => {
-  const ranked = PB.drive.rank([
-    { from: 'A', to: 'Z', fare: 300, ground: { total: 0 } },
-    { from: 'B', to: 'Z', fare: null, ground: { total: 0 } },
-    { from: 'C', to: 'Z', fare: 0, ground: { total: 0 } }
+test('a pair that never came back with a fare is left out', () => {
+  const ranked = PB.flights.rankCombos([
+    { from: 'A', to: 'Z', fare: 300 },
+    { from: 'B', to: 'Z', fare: null },
+    { from: 'C', to: 'Z', fare: 0 }
   ]);
   assert.strictEqual(ranked.length, 1, 'no fare means nothing to rank, not a free flight');
 });
 
-test('distance between airports is offered for scale, null when unknown', () => {
-  assert.ok(PB.drive.milesBetween('DEN', 'LAX') > 800);
-  assert.strictEqual(PB.drive.milesBetween('DEN', 'ZZZ'), null);
+test('the cheapest offer in a set is found, and junk ignored', () => {
+  const best = PB.flights.cheapest([
+    { price: 420 }, { price: 0 }, { price: null }, { price: 310 }, null
+  ]);
+  assert.strictEqual(best.price, 310);
+  assert.strictEqual(PB.flights.cheapest([]), null);
 });
 
 /* Regression: js/drive.js was added to index.html but not to the service
