@@ -133,6 +133,14 @@ async function handleSearch(url, env, ctx, origin) {
   // SerpApi stops: 0 any, 1 nonstop only, 2 <=1 stop, 3 <=2 stops
   if (p.get('nonStop') === 'true') q.set('stops', '1');
 
+  /* Second leg of a round trip. Google prices a return against a specific
+   * outbound, so the token has to travel WITH the original search parameters,
+   * not instead of them - which is why this is the same endpoint rather than
+   * one of its own. The results that come back are the ways home, each priced
+   * as a trip total. */
+  const departureToken = p.get('departureToken');
+  if (departureToken) q.set('departure_token', departureToken);
+
   /* The free tier is 250 searches a month shared by everyone using the site,
    * so identical searches must not each cost one. Cache on everything except
    * the API key. */
@@ -205,9 +213,21 @@ function normalize(data) {
     // Google reports stops per itinerary; layovers is the reliable count.
     const stops = Array.isArray(g.layovers) ? g.layovers.length : Math.max(0, legs.length - 1);
 
-    // "extensions" sometimes carries baggage notes; absent means unknown, and
-    // unknown must never read as "no bag".
-    const ext = (g.extensions || []).join(' ').toLowerCase();
+    /* Google's free-text notes are where fare terms live - "Carry-on bag not
+     * included", "1st checked bag: $40". They hang off the group on some
+     * results and off individual flights on others, so gather both and pass
+     * them through verbatim. The browser reads them (js/flights.js), which
+     * keeps one set of rules covering live and pasted fares alike, and lets
+     * the person booking see the airline's own words rather than a paraphrase.
+     *
+     * `bags` below stays for clients that predate that parsing. */
+    const extensions = [...new Set([
+      ...(g.extensions || []),
+      ...legs.flatMap((f) => f.extensions || [])
+    ].filter((s) => typeof s === 'string' && s.trim()))];
+
+    // Absent means unknown, and unknown must never read as "no bag".
+    const ext = extensions.join(' ').toLowerCase();
     const carryOn = /carry-on included|carry on included/.test(ext) ? 1 : null;
     const checked = /(\d+)\s*(?:free\s*)?checked bag/.exec(ext);
 
@@ -218,6 +238,10 @@ function normalize(data) {
       carriers: carriers.length ? carriers : ['Unknown airline'],
       carrierCodes: codes,
       bags: { cabin: carryOn, checked: checked ? Number(checked[1]) : null },
+      extensions,
+      /* Present on outbound results of a round trip; asking for it again with
+       * this token returns the ways back. Absent on the return results. */
+      departureToken: g.departure_token || null,
       stops,
       durationText: minutesToText(g.total_duration),
       itineraries: [{

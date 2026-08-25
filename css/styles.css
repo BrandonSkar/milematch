@@ -281,6 +281,77 @@ kbd {
   color: var(--accent); font-weight: 600;
 }
 
+/* A fare that charges for a bag is not the price it advertises. Amber, so it
+   reads as "this costs more" rather than as another neutral detail. */
+.offer-tag.fee {
+  color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
+/* ── What the price covers ───────────────────────────────────── */
+.fare-terms {
+  display: block; margin-top: .55rem; padding-top: .5rem;
+  border-top: 1px dashed var(--line);
+}
+.fare-line {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  font-size: .76rem; color: var(--text-dim); padding: .1rem 0;
+}
+.fare-line i { font-style: normal; }
+.fare-line b { font-family: var(--mono); font-weight: 700; white-space: nowrap; }
+.fare-line.is-fare { color: var(--text); }
+.fare-line.is-extra b { color: var(--warn); }
+.fare-line.is-unknown b { color: var(--text-faint); }
+.fare-note {
+  display: block; font-size: .72rem; line-height: 1.45;
+  color: var(--text-faint); margin-top: .35rem;
+}
+.fare-note.warn { color: var(--warn); }
+.fare-src {
+  display: block; font-size: .7rem; color: var(--text-faint);
+  font-style: italic; margin-top: .2rem;
+}
+
+/* ── Ways home ───────────────────────────────────────────────── */
+.returns {
+  background: var(--bg-elev-2); border: 1px dashed var(--line);
+  border-radius: var(--radius-sm); padding: .6rem .75rem;
+}
+.returns-note { margin: 0 0 .5rem; font-size: .76rem; line-height: 1.45; color: var(--text-dim); }
+.returns-note.err { color: var(--bad); }
+.returns-btn {
+  width: 100%; cursor: pointer; font-size: .8rem; font-weight: 600;
+  color: var(--accent); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-sm); padding: .45rem;
+}
+.returns-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.return-list { display: grid; gap: .35rem; }
+.return-opt {
+  display: grid; grid-template-columns: 1fr auto; gap: 0 .8rem;
+  width: 100%; text-align: left; cursor: pointer; color: inherit;
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: .5rem .6rem;
+  transition: border-color .12s, background .12s;
+}
+.return-opt:hover { border-color: var(--text-faint); }
+.return-opt.is-picked {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
+}
+/* The way home already inside the headline price: assumed, not offered. */
+.return-opt.is-default { border-style: dashed; }
+.return-when { font-size: .82rem; font-weight: 600; }
+.return-when em { font-style: normal; color: var(--text-faint); font-family: var(--mono); font-size: .72rem; }
+.return-who { font-size: .72rem; color: var(--text-dim); }
+.return-cost {
+  grid-column: 2; grid-row: 1 / span 2;
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+}
+.return-cost b { font-family: var(--mono); font-size: .95rem; }
+.return-cost i { font-style: normal; font-family: var(--mono); font-size: .66rem; color: var(--text-faint); }
+
 .jump-btn {
   display: block; width: 100%; margin-top: .6rem;
   background: var(--bg-elev-2); border: 1px dashed var(--line);
@@ -395,15 +466,16 @@ kbd {
 .strict-toggle { margin: .55rem 0 0; font-size: .8rem; }
 .strict-toggle b { font-weight: 700; }
 
-.airline-more { margin-top: .55rem; }
-.airline-more > summary {
+.airline-more, .advanced { margin-top: .55rem; }
+.airline-more > summary, .advanced > summary {
   font-size: .76rem; color: var(--text-dim); cursor: pointer;
   list-style: none; padding: .2rem 0;
 }
-.airline-more > summary::-webkit-details-marker { display: none; }
-.airline-more > summary::before { content: '+ '; }
-.airline-more[open] > summary::before { content: '– '; }
-.airline-more > summary:hover { color: var(--text); }
+.airline-more > summary::-webkit-details-marker,
+.advanced > summary::-webkit-details-marker { display: none; }
+.airline-more > summary::before, .advanced > summary::before { content: '+ '; }
+.airline-more[open] > summary::before, .advanced[open] > summary::before { content: '– '; }
+.airline-more > summary:hover, .advanced > summary:hover { color: var(--text); }
 .airline-more input { margin: .35rem 0 .3rem; }
 
 .metrics { display: flex; flex-wrap: wrap; gap: 1.3rem; margin: .75rem 0 .5rem; }

@@ -29,19 +29,24 @@ const SERP_RESPONSE = {
       layovers: [],
       total_duration: 320,
       price: 298,
-      extensions: ['Carry-on included', '1 free checked bag']
+      extensions: ['Carry-on included', '1 free checked bag'],
+      departure_token: 'tok-alaska'
     },
     {
       flights: [
         { departure_airport: { id: 'SEA' }, arrival_airport: { id: 'SLC' },
-          airline: 'Delta', flight_number: 'DL 800' },
+          airline: 'Delta', flight_number: 'DL 800',
+          // Google hangs notes off individual flights as well as the group.
+          extensions: ['Below average legroom (30 in)'] },
         { departure_airport: { id: 'SLC' }, arrival_airport: { id: 'JFK' },
-          airline: 'Delta', flight_number: 'DL 900' }
+          airline: 'Delta', flight_number: 'DL 900',
+          extensions: ['Below average legroom (30 in)'] }
       ],
       layovers: [{ duration: 65, name: 'Salt Lake City' }],
       total_duration: 550,
       price: 264,
-      extensions: []
+      extensions: [],
+      departure_token: 'tok-delta'
     }
   ],
   other_flights: [
@@ -149,6 +154,56 @@ test('unknown baggage stays null rather than becoming false', async () => {
   const delta = offers.find((o) => o.price === 264);
   assert.strictEqual(delta.bags.cabin, null);
   assert.strictEqual(delta.bags.checked, null);
+});
+
+/* The fare notes are where "1st checked bag: $40" lives. The browser reads
+ * them, so they have to arrive intact rather than pre-digested. */
+test('fare notes are forwarded verbatim, from the group and its flights', async () => {
+  const { offers } = await (await worker.fetch(req(uniqueSearch()), env, ctx)).json();
+
+  const alaska = offers.find((o) => o.price === 298);
+  assert.deepStrictEqual(alaska.extensions, ['Carry-on included', '1 free checked bag']);
+
+  // Both Delta legs carry the same note; it should be listed once.
+  const delta = offers.find((o) => o.price === 264);
+  assert.deepStrictEqual(delta.extensions, ['Below average legroom (30 in)']);
+
+  // An entry with no notes at all gets an empty list, not undefined.
+  const united = offers.find((o) => o.price === 241);
+  assert.deepStrictEqual(united.extensions, []);
+});
+
+/* ── Return flights ────────────────────────────────────────── */
+
+test('each outbound carries the token that asks for the ways back', async () => {
+  const { offers } = await (await worker.fetch(req(uniqueSearch()), env, ctx)).json();
+  assert.strictEqual(offers.find((o) => o.price === 298).departureToken, 'tok-alaska');
+  // Absent upstream means null, not undefined, so the app can test it plainly.
+  assert.strictEqual(offers.find((o) => o.price === 241).departureToken, null);
+});
+
+test('a departure token is sent on with the search it belongs to', async () => {
+  await worker.fetch(req(uniqueSearch() + '&departureToken=tok-alaska'), env, ctx);
+  const p = new URL(lastSerpUrl).searchParams;
+  assert.strictEqual(p.get('departure_token'), 'tok-alaska');
+  // Google prices a return against a specific outbound, so the original
+  // search has to travel with the token.
+  assert.strictEqual(p.get('departure_id'), 'SEA');
+  assert.strictEqual(p.get('arrival_id'), 'JFK');
+  assert.strictEqual(p.get('return_date'), '2026-11-22');
+  assert.strictEqual(p.get('type'), '1');
+});
+
+test('return results cache separately from the departures they follow', async () => {
+  const url = uniqueSearch();
+  const before = serpCalls;
+  await worker.fetch(req(url), env, ctx);
+  await worker.fetch(req(url + '&departureToken=tok-alaska'), env, ctx);
+  assert.strictEqual(serpCalls - before, 2, 'two different questions, two lookups');
+
+  // ...but asking the same one twice still costs nothing.
+  const again = await worker.fetch(req(url + '&departureToken=tok-alaska'), env, ctx);
+  assert.strictEqual(again.headers.get('X-MileMatch-Cache'), 'hit');
 });
 
 /* ── Caching ───────────────────────────────────────────────── */

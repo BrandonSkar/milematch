@@ -531,3 +531,247 @@ test('each result names the airlines its program can actually book', maybe, asyn
   `);
   assert.ok(labels.some((l) => /books /i.test(l)), 'programs should say what they ticket');
 });
+
+/* An unbundled fare is not the price it advertises. These pin the part of the
+ * UI that says so, because a missing bag fee is a number the whole points-vs-
+ * cash comparison is measured against. */
+
+/** Paste two fares: one with a free bag, one that charges for everything. */
+async function pasteBaggedFares() {
+  return evaluate(`(() => {
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    ['#nonStopInput','#carryOnInput','#checkedBagInput'].forEach(s => {
+      const el = document.querySelector(s);
+      if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change',{bubbles:true})); }
+    });
+    document.querySelectorAll('#airlineChips .chip-toggle.is-on').forEach(b => b.click());
+
+    document.querySelector('input[name=fareSource][value=paste]').click();
+    set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
+    set('#pasteInput', [
+      'Alaska', '8 hr 20 min', 'Nonstop', '1 free checked bag', '$298', 'round trip',
+      'Frontier', '9 hr 10 min', '1 stop', 'Carry-on bag not included',
+      '1st checked bag: $45', '$188', 'round trip'
+    ].join(String.fromCharCode(10)));
+
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    return document.querySelectorAll('#offers .offer').length;
+  })()`);
+}
+
+test('a fare that charges for bags says so on the row', maybe, async () => {
+  assert.strictEqual(await pasteBaggedFares(), 2, 'both fares should be listed');
+
+  const rows = await evaluate(`
+    [...document.querySelectorAll('#offers .offer')].map(o => ({
+      airline: o.querySelector('.offer-carrier').textContent,
+      tags: [...o.querySelectorAll('.offer-tag')].map(t => t.textContent),
+      fees: [...o.querySelectorAll('.offer-tag.fee')].map(t => t.textContent)
+    }))
+  `);
+
+  const frontier = rows.find((r) => r.airline.includes('Frontier'));
+  const alaska = rows.find((r) => r.airline.includes('Alaska'));
+
+  assert.deepStrictEqual(frontier.fees, ['carry-on costs extra', 'checked bag +$45'],
+    'the charges must be on the row, with the amount when it is known');
+  assert.ok(alaska.tags.includes('free checked bag'), 'and what IS included, alongside nonstop');
+  assert.strictEqual(alaska.fees.length, 0, 'a fare with a free bag has nothing to warn about');
+});
+
+test('the picked flight itemises what the price does and does not buy', maybe, async () => {
+  const detail = await evaluate(`(() => {
+    // Pick the fare that charges, so there is something to itemise.
+    const row = [...document.querySelectorAll('#offers .offer')]
+      .find(o => o.querySelector('.offer-carrier').textContent.includes('Frontier'));
+    row.click();
+    const sel = document.querySelector('.offer.is-selected');
+    return {
+      lines: [...sel.querySelectorAll('.fare-line')].map(l => l.textContent.replace(/\\s+/g,' ')),
+      note: (sel.querySelector('.fare-note.warn') || {}).textContent || '',
+      quoted: [...sel.querySelectorAll('.fare-src')].map(s => s.textContent)
+    };
+  })()`);
+
+  assert.ok(detail.lines.some((l) => /Fare, taxes.*\$188/.test(l)), 'the fare itself is a line item');
+  assert.ok(detail.lines.some((l) => /Carry-on bag.*costs extra/.test(l)));
+  assert.ok(detail.lines.some((l) => /Checked bag.*\+\$45/.test(l)));
+  assert.match(detail.note, /not.{0,3} in the price above/i, 'it must be clear these are on top');
+  assert.ok(detail.quoted.some((q) => q.includes('1st checked bag: $45')),
+    "the airline's own wording should be quoted, not just paraphrased");
+});
+
+test('a fare that never mentions bags says that, rather than implying free', maybe, async () => {
+  const lines = await evaluate(`(() => {
+    const row = [...document.querySelectorAll('#offers .offer')]
+      .find(o => o.querySelector('.offer-carrier').textContent.includes('Alaska'));
+    row.click();
+    const sel = document.querySelector('.offer.is-selected');
+    return [...sel.querySelectorAll('.fare-line')].map(l => l.textContent.replace(/\\s+/g,' '));
+  })()`);
+
+  assert.ok(lines.some((l) => /Checked bag.*included/.test(l)), 'the free bag is stated');
+  assert.ok(lines.some((l) => /Carry-on bag.*not stated/.test(l)),
+    'and the carry-on nobody mentioned is neither promised nor denied');
+});
+
+/* Repeating a badge on every row is noise: if you filtered for it, you know. */
+test('a filtered-for perk stops being announced on every row', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const cb = document.querySelector('#checkedBagInput');
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    const tags = [...document.querySelectorAll('#offers .offer-tag')].map(t => t.textContent);
+    return { rows: document.querySelectorAll('#offers .offer').length, tags };
+  })()`);
+
+  assert.strictEqual(r.rows, 1, 'the fare known to charge for a bag is filtered out');
+  assert.ok(!r.tags.includes('free checked bag'), 'and the badge is redundant once filtered for');
+  assert.ok(r.tags.includes('nonstop'), 'badges not covered by a filter still show');
+
+  await evaluate(`(() => {
+    const cb = document.querySelector('#checkedBagInput');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+});
+
+/* Return flights need a provider that can price them against an outbound.
+ * Pasted text cannot, and the panel must not pretend otherwise. */
+test('pasted fares offer no return picker', maybe, async () => {
+  const panels = await evaluate(`document.querySelectorAll('#offers .returns').length`);
+  assert.strictEqual(panels, 0);
+});
+
+/* The ways home, with the provider stubbed out — the point is the wiring, and
+ * a real lookup would spend a share of the monthly fare allowance. */
+async function liveRoundTripSearch() {
+  await evaluate(`(() => {
+    const leg = (from, to, depart, arrive, name, number) =>
+      ({ from, to, depart, arrive, carrierName: name, number });
+
+    PB.flights.hasProxy = () => true;
+    PB.flights.searchLive = () => Promise.resolve([{
+      id: 'sa-0', price: 620, currency: 'USD',
+      carriers: ['Alaska'], carrierCodes: ['AS'], stops: 0,
+      bags: { cabin: 1, checked: 0, cabinFee: null, checkedFee: 35 },
+      extensions: ['Carry-on included', '1st checked bag: $35'],
+      durationText: '5h 20m', departureToken: 'tok-1',
+      itineraries: [{ segments: [leg('SEA','JFK','2026-11-15 07:00','2026-11-15 15:20','Alaska','AS 12')] }]
+    }]);
+    PB.flights.searchReturns = (q, s, token) => Promise.resolve(token !== 'tok-1' ? [] : [
+      { id: 'r0', price: 620, carriers: ['Alaska'], carrierCodes: ['AS'], stops: 0,
+        bags: { cabin: 1, checked: 0 }, durationText: '6h 05m',
+        itineraries: [{ segments: [leg('JFK','SEA','2026-11-22 06:00','2026-11-22 09:05','Alaska','AS 21')] }] },
+      { id: 'r1', price: 705, carriers: ['Alaska'], carrierCodes: ['AS'], stops: 0,
+        bags: { cabin: 1, checked: 0 }, durationText: '6h 10m',
+        itineraries: [{ segments: [leg('JFK','SEA','2026-11-22 17:30','2026-11-22 20:40','Alaska','AS 45')] }] }
+    ]);
+
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const rt = document.querySelector('#roundTripInput');
+    if (!rt.checked) { rt.checked = true; rt.dispatchEvent(new Event('change', { bubbles: true })); }
+    set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
+    set('#dateInput', '2026-11-15'); set('#returnInput', '2026-11-22');
+    document.querySelector('input[name=fareSource][value=live]').click();
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  })()`);
+  await sleep(300);
+}
+
+test('a round-trip fare says the cheapest return is baked into its price', maybe, async () => {
+  await liveRoundTripSearch();
+
+  const panel = await evaluate(`(() => {
+    const p = document.querySelector('#offers .returns');
+    return p ? { text: p.textContent.replace(/\\s+/g,' '), hasBtn: !!p.querySelector('.returns-btn') } : null;
+  })()`);
+
+  assert.ok(panel, 'the picked outbound should offer its returns');
+  assert.match(panel.text, /cheapest/i, 'the headline price is not just "the price"');
+  assert.ok(panel.hasBtn, 'and fetching the alternatives is a deliberate act, not automatic');
+});
+
+test('the return flights list what each way home costs on top', maybe, async () => {
+  await evaluate(`document.querySelector('#offers .returns .returns-btn').click()`);
+  await sleep(300);
+
+  const opts = await evaluate(`
+    [...document.querySelectorAll('#offers .return-opt')].map(o => ({
+      when: o.querySelector('.return-when').textContent.replace(/\\s+/g,' '),
+      who: o.querySelector('.return-who').textContent.replace(/\\s+/g,' '),
+      cost: o.querySelector('.return-cost').textContent.replace(/\\s+/g,' ')
+    }))
+  `);
+
+  assert.strictEqual(opts.length, 2);
+  assert.match(opts[0].when, /6:00 AM.*9:05 AM/, 'a return is chosen by its times');
+  assert.match(opts[0].who, /already in the price/i, 'the cheapest is the one already assumed');
+  assert.match(opts[1].cost, /\$705/, 'each option is priced as a trip total');
+  assert.match(opts[1].cost, /\+\$85/, 'and against the total already quoted');
+});
+
+test('picking a return re-prices the whole trip, points included', maybe, async () => {
+  const before = await evaluate(`document.querySelector('#jumpToPoints').textContent`);
+  assert.match(before, /\$620/);
+
+  const after = await evaluate(`(() => {
+    document.querySelectorAll('#offers .return-opt')[1].click();
+    return {
+      jump: document.querySelector('#jumpToPoints').textContent,
+      price: document.querySelector('.offer.is-selected .offer-price').textContent,
+      delta: (document.querySelector('.offer.is-selected .offer-delta') || {}).textContent || '',
+      picked: document.querySelectorAll('#offers .return-opt.is-picked').length,
+      cash: [...document.querySelectorAll('.trip-summary dd')].map(d => d.textContent)
+    };
+  })()`);
+
+  assert.strictEqual(after.picked, 1, 'the chosen return is marked');
+  assert.match(after.price, /\$705/, 'the row shows what the trip now costs');
+  assert.match(after.delta, /\+\$85/, 'and is honest about where the increase came from');
+  assert.match(after.jump, /\$705/, 'the jump to the points comparison follows it');
+  assert.ok(after.cash.includes('$705'),
+    'the points comparison is measured against the new total, not the old one');
+});
+
+test('what the fare covers survives into the round-trip view', maybe, async () => {
+  const lines = await evaluate(`
+    [...document.querySelectorAll('.offer.is-selected .fare-line')].map(l => l.textContent.replace(/\\s+/g,' '))
+  `);
+  assert.ok(lines.some((l) => /Fare, taxes.*\$705/.test(l)), 'itemised against the trip total');
+  assert.ok(lines.some((l) => /Carry-on bag.*included/.test(l)));
+  assert.ok(lines.some((l) => /Checked bag.*\+\$35/.test(l)), 'the bag fee is still on show');
+});
+/* An old worker answers every search without a departure token. The panel
+ * would just never appear, leaving nothing on screen to explain why. */
+test('an out-of-date fare worker says so instead of hiding the returns', maybe, async () => {
+  await evaluate(`(() => {
+    const prev = PB.flights.searchLive;
+    PB.flights.searchLive = () => prev().then(offers =>
+      offers.map(o => Object.assign({}, o, { departureToken: undefined })));
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  })()`);
+  await sleep(300);
+
+  const panel = await evaluate(`(() => {
+    const p = document.querySelector('#offers .returns');
+    return p ? p.textContent.replace(/\\s+/g,' ') : null;
+  })()`);
+
+  assert.ok(panel, 'the panel must still render, or there is nowhere to say anything');
+  assert.match(panel, /newer fare worker/i);
+  assert.match(panel, /deploy/i, 'and it should say what to do about it');
+});

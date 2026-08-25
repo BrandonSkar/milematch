@@ -8,6 +8,12 @@
   var state, lastResult = null, lastQuery = null, liveOffers = [], selectedOfferId = null;
   var pickedAirlines = [];   // carrier codes toggled on via the chip buttons
 
+  /* Ways home for each outbound, keyed by offer id:
+   *   { loading, error, options, selectedId }
+   * Fetched only when asked for, because every lookup spends a share of the
+   * monthly fare allowance, and kept so re-picking an outbound is free. */
+  var returnsByOffer = {};
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -222,6 +228,7 @@
 
       liveOffers = parsed;
       selectedOfferId = parsed[0].id;
+      returnsByOffer = {};
     });
 
     form.addEventListener('submit', function (e) {
@@ -241,7 +248,7 @@
       if (PB.flights.hasProxy(state.settings)) {
         hint.textContent = PB.flights.usingSharedProxy(state.settings)
           ? (PB.CONFIG.sharedProxyNote || 'Using the shared fare lookup.')
-          : 'Fares come from Amadeus through your worker at ' + PB.flights.proxyUrl(state.settings);
+          : 'Fares come through your own worker at ' + PB.flights.proxyUrl(state.settings);
         hint.classList.remove('warn');
       } else {
         hint.innerHTML = 'No fare lookup is configured yet. Deploy the worker in ' +
@@ -510,6 +517,7 @@
       $('#offersWrap').hidden = true;
       PB.flights.searchLive(q, state.settings).then(function (offers) {
         liveOffers = offers;
+        returnsByOffer = {};
         if (!offers.length) {
           setStatus('No fares came back for that route and date. Try another date, or enter a price manually.', 'err');
           $('#results').innerHTML = '';
@@ -526,6 +534,7 @@
 
     if (q.fareSource === 'paste') {
       liveOffers = PB.flights.parsePastedFares($('#pasteInput').value);
+      returnsByOffer = {};
       if (!liveOffers.length) {
         setStatus('Paste the copied flight results first — the app reads the prices out of them.', 'err');
         return;
@@ -587,17 +596,156 @@
     if (!shown.some(function (o) { return o.id === selectedOfferId; })) {
       selectedOfferId = shown[0].id;
     }
-    renderOffers(shown);
+    renderOffers(shown, q);
     var picked = shown.filter(function (o) { return o.id === selectedOfferId; })[0];
-    evaluateWith(q, picked.price);
+    evaluateWith(q, tripTotal(picked));
 
     /* The points comparison sits below up to a dozen flight rows, which is far
      * enough off screen that "below" alone was not a useful instruction. */
     var jump = $('#jumpToPoints');
     jump.hidden = false;
-    jump.textContent = 'See what the ' + PB.fmt.money(picked.price) + ' ' +
+    jump.textContent = 'See what the ' + PB.fmt.money(tripTotal(picked)) + ' ' +
                        picked.carriers[0] + ' flight costs in points ↓';
   }
+
+  /* ─────────────────────── Ways home ──────────────────────────
+   * A round-trip fare is quoted against the cheapest available return, so the
+   * headline price already assumes one - it just never says which. Asking for
+   * the alternatives shows what a better-timed return actually costs, and the
+   * price that comes back is the new trip total. */
+
+  function chosenReturn(offer) {
+    var entry = offer && returnsByOffer[offer.id];
+    if (!entry || !entry.options || !entry.selectedId) return null;
+    return entry.options.filter(function (r) { return r.id === entry.selectedId; })[0] || null;
+  }
+
+  /** What this trip costs: the fare, or the pairing if a return was chosen. */
+  function tripTotal(offer) {
+    var back = chosenReturn(offer);
+    return back ? back.price : offer.price;
+  }
+
+  /* Returns exist only where a provider can price them: a live round-trip
+   * search. Pasted text is one column of numbers with no way to ask.
+   *
+   * 'stale' is the case worth naming out loud. A worker deployed before return
+   * flights existed answers every search without a departure token, so the
+   * panel would simply never appear and there would be nothing on screen to
+   * explain why. Detecting it here rather than asking the worker its version
+   * matters: an old worker cannot tell you it is old. */
+  function returnsState(offer, q) {
+    if (!offer || !q.roundTrip || !q.returnDate) return 'none';
+    if (offer.fromPaste || !PB.flights.hasProxy(state.settings)) return 'none';
+    return offer.departureToken ? 'ready' : 'stale';
+  }
+
+  function loadReturns(offer, q) {
+    if (returnsByOffer[offer.id] && returnsByOffer[offer.id].loading) return;
+    returnsByOffer[offer.id] = { loading: true };
+    paintReturns(offer, q);
+
+    PB.flights.searchReturns(q, state.settings, offer.departureToken)
+      .then(function (options) {
+        /* The list is the ways home ranked by trip total; more than a handful
+         * is a departures board, not a choice. */
+        returnsByOffer[offer.id] = { options: options.slice(0, 6) };
+        paintReturns(offer, q);
+      })
+      .catch(function (err) {
+        returnsByOffer[offer.id] = { error: err.message };
+        paintReturns(offer, q);
+      });
+  }
+
+  function paintReturns(offer, q) {
+    var panel = $('#returns-' + cssId(offer.id));
+    if (!panel) return;
+    var entry = returnsByOffer[offer.id] || {};
+
+    if (returnsState(offer, q) === 'stale') {
+      panel.innerHTML = '<p class="returns-note">' +
+        '<b>Return flights need a newer fare worker.</b> This one answered without the ' +
+        'token that asks for the ways home — re-run <code>worker/deploy.ps1</code> and ' +
+        'search again.</p>';
+      return;
+    }
+
+    if (entry.loading) {
+      panel.innerHTML = '<p class="returns-note">Looking up the ways back…</p>';
+      return;
+    }
+
+    if (entry.error) {
+      panel.innerHTML = '<p class="returns-note err">Could not load return flights: ' +
+        esc(entry.error) + '</p>';
+      return;
+    }
+
+    if (!entry.options) {
+      panel.innerHTML =
+        '<p class="returns-note">' +
+          'The ' + PB.fmt.money(offer.price) + ' above is this outbound paired with the ' +
+          '<b>cheapest</b> way back. Other returns cost more.' +
+        '</p>' +
+        '<button type="button" class="returns-btn" data-act="load">Show the return flights →</button>';
+      panel.querySelector('[data-act=load]')
+        .addEventListener('click', function () { loadReturns(offer, q); });
+      return;
+    }
+
+    if (!entry.options.length) {
+      panel.innerHTML = '<p class="returns-note">No return flights came back for this outbound.</p>';
+      return;
+    }
+
+    var html = '<p class="returns-note">Ways back on ' + esc(q.returnDate) +
+      '. Picking one sets the trip total, and the points comparison follows it.</p>' +
+      '<div class="return-list"></div>';
+    panel.innerHTML = html;
+    var list = panel.querySelector('.return-list');
+
+    entry.options.forEach(function (r, i) {
+      /* The cheapest way home is the one already baked into the headline
+       * price, so it is the implied default rather than an upsell. */
+      var isDefault = i === 0 && !entry.selectedId;
+      var picked = r.id === entry.selectedId;
+      var delta = r.price - offer.price;
+      var segs = (r.itineraries && r.itineraries[0] && r.itineraries[0].segments) || [];
+      var first = segs[0] || {}, last = segs[segs.length - 1] || {};
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'return-opt' + (picked ? ' is-picked' : '') + (isDefault ? ' is-default' : '');
+      btn.setAttribute('aria-pressed', picked ? 'true' : 'false');
+      btn.innerHTML =
+        '<span class="return-when">' +
+          esc(clockTime(first.depart) || '—') + ' <span class="leg-arrow">→</span> ' +
+          esc(clockTime(last.arrive) || '—') +
+          (first.from && last.to ? ' <em>' + esc(first.from) + '–' + esc(last.to) + '</em>' : '') +
+        '</span>' +
+        '<span class="return-who">' + esc(r.carriers.join(', ')) + ' · ' +
+          (r.stops === 0 ? 'nonstop' : r.stops + ' stop' + (r.stops > 1 ? 's' : '')) +
+          (r.durationText ? ' · ' + esc(r.durationText) : '') +
+          (isDefault ? ' · <b>already in the price</b>' : '') +
+        '</span>' +
+        '<span class="return-cost">' +
+          '<b>' + PB.fmt.money(r.price) + '</b>' +
+          '<i>' + (delta > 0 ? '+' + PB.fmt.money(delta) + ' vs cheapest'
+                 : delta < 0 ? PB.fmt.money(delta) : 'trip total') + '</i>' +
+        '</span>';
+
+      btn.addEventListener('click', function () {
+        var e = returnsByOffer[offer.id];
+        e.selectedId = e.selectedId === r.id ? null : r.id;
+        applyOfferFilters();   // re-price the trip on the new total
+      });
+      list.appendChild(btn);
+    });
+  }
+
+  /* Provider ids are opaque strings; keep them out of selector syntax. */
+  function cssId(id) { return String(id).replace(/[^a-zA-Z0-9_-]/g, '_'); }
 
   /* Time strings arrive as "2026-11-15 07:00" (worker) or ISO (older paths).
    * Show a plain clock time; fall back to the raw value rather than "Invalid
@@ -612,7 +760,36 @@
     return h12 + ':' + m[2] + ' ' + suffix;
   }
 
-  function renderOffers(offers) {
+  /* Badges for the facts you would otherwise have to hunt for: what the fare
+   * includes, and what it quietly does not.
+   *
+   * A badge every row carries tells you nothing, so anything the filters
+   * already guarantee is left off — if you asked for nonstops with a free
+   * checked bag, saying so on all twelve rows is noise. */
+  function offerTags(o, q, cheapest) {
+    var b = o.bags || {};
+    var tags = [];
+    var add = function (label, kind) { tags.push({ label: label, kind: kind }); };
+
+    if (o.price === cheapest) add('cheapest', '');
+    if (o.stops === 0 && !q.nonStop) add('nonstop', 'alt');
+    if (b.cabin > 0 && !q.freeCarryOn) add('free carry-on', 'alt');
+    if (b.checked > 0 && !q.freeChecked) {
+      add(b.checked > 1 ? b.checked + ' free checked bags' : 'free checked bag', 'alt');
+    }
+
+    /* The other half of the story, and the half a price comparison hides:
+     * these fares cost more than the number on the right. */
+    if (b.cabin === 0) add(b.cabinFee ? 'carry-on +' + PB.fmt.money(b.cabinFee) : 'carry-on costs extra', 'fee');
+    if (b.checked === 0) add(b.checkedFee ? 'checked bag +' + PB.fmt.money(b.checkedFee) : 'checked bag costs extra', 'fee');
+
+    return tags.map(function (t) {
+      return '<span class="offer-tag' + (t.kind ? ' ' + t.kind : '') + '">' + esc(t.label) + '</span>';
+    }).join('');
+  }
+
+  function renderOffers(offers, q) {
+    q = q || readForm();
     var wrap = $('#offers');
     var list = (offers || liveOffers).slice(0, 12);
     var cheapest = list.length ? Math.min.apply(null, list.map(function (o) { return o.price; })) : 0;
@@ -625,30 +802,29 @@
       btn.className = 'offer' + (selected ? ' is-selected' : '');
       btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
 
-      var bags = [];
-      if (o.bags.cabin > 0) bags.push('carry-on');
-      if (o.bags.checked > 0) bags.push(o.bags.checked + ' bag' + (o.bags.checked > 1 ? 's' : ''));
-
+      /* Stops are said once: as a badge when it is a selling point, as text
+       * when it is a cost. Both at once was just the word twice. */
       var meta = [];
-      meta.push(o.stops === 0 ? 'Nonstop'
-              : o.stops == null ? 'Stops unknown'
-              : o.stops + ' stop' + (o.stops > 1 ? 's' : ''));
+      if (o.stops == null) meta.push('Stops unknown');
+      else if (o.stops > 0) meta.push(o.stops + ' stop' + (o.stops > 1 ? 's' : ''));
       if (o.durationText) meta.push(esc(o.durationText));
-      if (bags.length) meta.push('incl. ' + esc(bags.join(' + ')));
 
+      var total = tripTotal(o);
       var extra = o.price - cheapest;
 
       var h = '<span class="offer-row">' +
         '<span class="offer-main">' +
           '<span class="offer-carrier">' + esc(o.carriers.join(', ')) +
-            (o.price === cheapest ? '<span class="offer-tag">cheapest</span>' : '') +
-            (o.stops === 0 ? '<span class="offer-tag alt">nonstop</span>' : '') +
+            offerTags(o, q, cheapest) +
           '</span>' +
           '<span class="offer-meta">' + meta.join(' · ') + '</span>' +
         '</span>' +
         '<span class="offer-priceblock">' +
-          '<span class="offer-price">' + PB.fmt.money(o.price) + '</span>' +
-          (extra > 0 ? '<span class="offer-delta">+' + PB.fmt.money(extra) + '</span>' : '') +
+          '<span class="offer-price">' + PB.fmt.money(total) + '</span>' +
+          (total !== o.price
+            ? '<span class="offer-delta">' + (total > o.price ? '+' : '') +
+              PB.fmt.money(total - o.price) + ' · your return</span>'
+            : extra > 0 ? '<span class="offer-delta">+' + PB.fmt.money(extra) + '</span>' : '') +
         '</span>' +
       '</span>';
 
@@ -675,6 +851,9 @@
         } else {
           h += '<span class="leg-stop">No itinerary detail for this fare.</span>';
         }
+
+        h += fareTerms(o, total);
+
         /* A statement, not a call to action — the clickable jump lives below
          * the whole list, since a button cannot be nested inside this one. */
         h += '<span class="offer-chosen">✓ Using this flight for the points comparison</span></span>';
@@ -687,8 +866,69 @@
         applyOfferFilters();
       });
       wrap.appendChild(btn);
+
+      /* Ways home hang below the flight they belong to. They cannot live
+       * inside it: each is its own button, and buttons do not nest. */
+      if (selected && returnsState(o, q) !== 'none') {
+        var panel = document.createElement('div');
+        panel.className = 'returns';
+        panel.id = 'returns-' + cssId(o.id);
+        wrap.appendChild(panel);
+        paintReturns(o, q);
+      }
     });
     $('#offersWrap').hidden = false;
+  }
+
+  /* Exactly what the price on the right does and does not buy.
+   *
+   * An airline fare is not one number any more. Rendering only the headline
+   * lets a $40 bag arrive at the airport as a surprise, and — since this app
+   * measures points against cash — quietly flatters the cash side of every
+   * comparison it draws. So: what is in, what is extra, what nobody said. */
+  function fareTerms(o, total) {
+    var terms = PB.flights.fareExtras(o);
+    var h = '<span class="fare-terms">' +
+      '<span class="fare-line is-fare"><i>Fare, taxes and carrier fees</i>' +
+        '<b>' + PB.fmt.money(total) + '</b></span>';
+
+    terms.included.forEach(function (label) {
+      h += '<span class="fare-line"><i>' + esc(cap(label)) + '</i><b>included</b></span>';
+    });
+
+    terms.extra.forEach(function (item) {
+      h += '<span class="fare-line is-extra"><i>' + esc(cap(item.label)) + '</i><b>' +
+        (item.amount == null ? 'costs extra' : '+' + PB.fmt.money(item.amount)) +
+        '</b></span>';
+    });
+
+    terms.unknown.forEach(function (label) {
+      h += '<span class="fare-line is-unknown"><i>' + esc(cap(label)) + '</i><b>not stated</b></span>';
+    });
+
+    if (terms.extra.length) {
+      h += '<span class="fare-note warn">Anything marked extra is <b>not</b> in the price above. ' +
+           'Bag fees are usually charged per traveler, each way — check the airline\'s page before you book.</span>';
+    }
+    if (terms.unknown.length) {
+      var named = joinWords(terms.unknown.map(function (l) { return 'a ' + l; }));
+      h += '<span class="fare-note">Nothing here says whether ' + esc(named) +
+           ' is included, so ' + (terms.unknown.length > 1 ? 'either' : 'it') +
+           ' could be an extra charge at booking.</span>';
+    }
+
+    PB.flights.feeNotes(o).forEach(function (line) {
+      h += '<span class="fare-src">“' + esc(line) + '”</span>';
+    });
+
+    return h + '</span>';
+  }
+
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function joinWords(list) {
+    return list.length < 2 ? (list[0] || '')
+      : list.slice(0, -1).join(', ') + ' or ' + list[list.length - 1];
   }
 
   /* Verdicts describe the VALUE of a hypothetical award, never its existence.
@@ -1139,28 +1379,34 @@
       applyFareSource(readForm().fareSource);
     });
 
-    /* Make it obvious when a shared worker is already covering you, so nobody
-     * goes hunting for a setup step they don't need. */
-    if (PB.CONFIG && (PB.CONFIG.sharedProxyUrl || '').trim()) {
-      proxy.placeholder = 'Using the shared lookup — leave empty unless you have your own';
-      var banner = document.createElement('p');
-      banner.className = 'hint';
-      banner.style.marginTop = '.5rem';
-      banner.innerHTML = '<b>Live search is already set up for this site.</b> ' +
-        esc(PB.CONFIG.sharedProxyNote || '') +
-        ' You only need a worker URL here if you\'d rather use your own Amadeus quota.';
-      proxy.parentElement.parentElement.appendChild(banner);
+    /* Say plainly that there is nothing to do here, so nobody goes hunting for
+     * a setup step they don't need. */
+    var intro = $('#proxyIntro');
+    if (PB.flights.usingSharedProxy(state.settings)) {
+      proxy.placeholder = 'Using the site\'s lookup — leave empty';
+      intro.innerHTML = '<b>Live search is already set up.</b> ' +
+        esc(PB.CONFIG.sharedProxyNote || '') + ' Nothing to configure.';
+    } else if (PB.flights.hasProxy(state.settings)) {
+      intro.textContent = 'Live fares come from your own worker at ' +
+        PB.flights.proxyUrl(state.settings) + '.';
+    } else {
+      intro.innerHTML = 'No fare lookup is configured, so <b>Live search</b> is unavailable. ' +
+        'Paste or type a price instead, or deploy the worker in <code>worker/</code>.';
     }
 
     $('#testProxy').addEventListener('click', function () {
       var url = proxy.value.trim() || PB.flights.proxyUrl(state.settings);
       var status = $('#proxyStatus');
-      if (!url) { status.textContent = 'Enter a URL first.'; return; }
+      if (!url) { status.textContent = 'No worker to test — add one below.'; return; }
       status.textContent = 'Testing…';
       fetch(url.replace(/\/+$/, '') + '/health')
         .then(function (r) { return r.json(); })
         .then(function (j) {
-          status.textContent = j.ok ? 'Connected. Amadeus credentials ' + (j.credentials ? 'present.' : 'MISSING — set them in the worker.') : 'Reachable but unhealthy.';
+          if (!j.ok) { status.textContent = 'Reachable but unhealthy.'; return; }
+          /* Name the provider the worker reports rather than a hardcoded one -
+           * this proxy has already changed providers once. */
+          status.textContent = 'Connected to ' + (j.provider || 'the fare provider') + '. ' +
+            (j.credentials ? 'API key present.' : 'API KEY MISSING — set it on the worker.');
         })
         .catch(function (e) { status.textContent = 'Failed: ' + e.message; });
     });

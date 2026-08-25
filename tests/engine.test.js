@@ -26,6 +26,10 @@ function loadPB() {
 
 const PB = loadPB();
 
+/* Objects built inside the vm carry the vm's prototypes, which deepStrictEqual
+ * counts as a difference. Copy into this realm before comparing shapes. */
+const plain = (o) => ({ ...o });
+
 /* ── Geography ─────────────────────────────────────────────── */
 
 test('airports load with regions and coordinates', () => {
@@ -769,6 +773,119 @@ test('filters apply to pasted offers, and unknowns never fail silently', () => {
 
   const onlyAlaska = PB.flights.applyFilters(offers, { airlines: ['AS'] });
   assert.deepStrictEqual([...onlyAlaska.map((o) => o.price)], [298]);
+});
+
+/* ── What the fare covers ──────────────────────────────────── */
+
+test('baggage terms read as included, charged, or unstated — never guessed', () => {
+  const read = PB.flights.readBags;
+
+  assert.deepStrictEqual(plain(read('Carry-on included | 1 free checked bag')),
+    { cabin: 1, checked: 1, cabinFee: null, checkedFee: null });
+
+  // "not included" contains "included"; the exclusion has to win.
+  assert.deepStrictEqual(plain(read('Carry-on bag not included')),
+    { cabin: 0, checked: null, cabinFee: null, checkedFee: null });
+
+  assert.deepStrictEqual(plain(read('Checked baggage for a fee')),
+    { cabin: null, checked: 0, cabinFee: null, checkedFee: null });
+
+  // A price makes it an extra, and the amount is worth showing.
+  assert.deepStrictEqual(plain(read('Carry-on bag for a fee: $35 | 1st checked bag: $45')),
+    { cabin: 0, checked: 0, cabinFee: 35, checkedFee: 45 });
+
+  assert.strictEqual(read('2 free checked bags').checked, 2);
+
+  // Basic economy is sold as "no overhead bin", which means no carry-on.
+  assert.strictEqual(read('Overhead bin space unavailable').cabin, 0);
+
+  // Silence is silence. Nothing here is about bags.
+  assert.deepStrictEqual(plain(read('Nonstop | 8 hr 20 min | Below average legroom')),
+    { cabin: null, checked: null, cabinFee: null, checkedFee: null });
+});
+
+test('a fee is only read off the bag it belongs to', () => {
+  // The seat price must not become the bag price.
+  const r = PB.flights.readBags('Seat selection: $22 | Checked baggage for a fee');
+  assert.strictEqual(r.checkedFee, null, 'no amount was given for the bag');
+  assert.strictEqual(r.checked, 0, 'but it is still known to cost extra');
+});
+
+test('pasted results carry their own baggage terms', () => {
+  const offers = PB.flights.parsePastedFares(`
+Alaska
+8 hr 20 min
+Nonstop
+1 free checked bag
+$298
+round trip
+Frontier
+9 hr 10 min
+1 stop
+Carry-on bag not included
+1st checked bag: $45
+$188
+round trip
+`);
+
+  const byPrice = {};
+  offers.forEach((o) => { byPrice[o.price] = o; });
+
+  assert.strictEqual(byPrice[298].bags.checked, 1);
+  assert.strictEqual(byPrice[188].bags.cabin, 0);
+  assert.strictEqual(byPrice[188].bags.checked, 0);
+  assert.strictEqual(byPrice[188].bags.checkedFee, 45);
+
+  // The airline's own words are kept so the UI can quote rather than paraphrase.
+  assert.deepStrictEqual([...PB.flights.feeNotes(byPrice[188])],
+    ['Carry-on bag not included', '1st checked bag: $45']);
+
+  // A bag line is not a fare: neither of those numbers is an offer.
+  assert.deepStrictEqual([...offers.map((o) => o.price)], [188, 298]);
+});
+
+test('a fare known to charge for bags fails the free-bag filters', () => {
+  const offers = [
+    { id: 'free', price: 300, carrierCodes: [], stops: 0, bags: { cabin: 1, checked: 1 } },
+    { id: 'paid', price: 188, carrierCodes: [], stops: 0, bags: { cabin: 0, checked: 0 } },
+    { id: 'quiet', price: 250, carrierCodes: [], stops: 0, bags: { cabin: null, checked: null } }
+  ];
+  const kept = PB.flights.applyFilters(offers, { freeCarryOn: true, freeChecked: true });
+  assert.deepStrictEqual([...kept.map((o) => o.id)], ['free', 'quiet'],
+    'only the fare that is KNOWN to charge is dropped');
+});
+
+test('fare terms split into included, extra, and unstated', () => {
+  const terms = PB.flights.fareExtras({
+    bags: { cabin: 1, checked: 0, cabinFee: null, checkedFee: 40 }
+  });
+  assert.deepStrictEqual([...terms.included], ['carry-on bag']);
+  assert.deepStrictEqual([...terms.extra.map(plain)], [{ label: 'checked bag', amount: 40 }]);
+  assert.deepStrictEqual([...terms.unknown], []);
+
+  // An extra with no price is still an extra, and must not read as free.
+  const vague = PB.flights.fareExtras({ bags: { cabin: 0, checked: null } });
+  assert.deepStrictEqual([...vague.extra.map(plain)], [{ label: 'carry-on bag', amount: null }]);
+  assert.deepStrictEqual([...vague.unknown], ['checked bag']);
+
+  // Two included bags are counted, not just acknowledged.
+  const two = PB.flights.fareExtras({ bags: { cabin: 1, checked: 2 } });
+  assert.deepStrictEqual([...two.included], ['carry-on bag', '2 checked bags']);
+});
+
+test('worker notes win over its coarser bag summary', () => {
+  // An offer from a worker that flagged a free bag, with notes that say the
+  // carry-on is extra: both facts survive, read by one set of rules.
+  const offer = PB.flights.readFareTerms({
+    bags: { cabin: null, checked: 1 },
+    extensions: ['Carry-on bag not included', '1 free checked bag']
+  });
+  assert.strictEqual(offer.bags.cabin, 0);
+  assert.strictEqual(offer.bags.checked, 1);
+
+  // An offer from an older worker carries no notes; its summary is left alone.
+  const legacy = PB.flights.readFareTerms({ bags: { cabin: 1, checked: null } });
+  assert.deepStrictEqual(plain(legacy.bags), { cabin: 1, checked: null });
 });
 
 /* ── Shared vs personal fare proxy ─────────────────────────── */

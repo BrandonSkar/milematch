@@ -112,7 +112,22 @@ or typing a price. Nothing breaks.
 | `/search` | `{ offers: [...] }`, already normalised for the app |
 
 `/search` parameters: `origin`, `destination`, `departureDate` (required);
-`returnDate`, `adults`, `travelClass` (1–4), `currencyCode`, `nonStop`.
+`returnDate`, `adults`, `travelClass` (1–4), `currencyCode`, `nonStop`,
+`departureToken`.
+
+Each offer carries `extensions` — Google's own fare notes, verbatim, which is
+where "1st checked bag: $40" lives. The app reads them so it can show what a
+price does and does not cover.
+
+### Return flights
+
+A round trip is two questions. The first `/search` lists departures, and each
+one comes back with a `departureToken`. Repeat the **same** search with that
+token added and the answer is the ways home, each priced as a trip total.
+
+That is a second lookup against the same allowance, so the app only asks when
+someone opens the return list on a flight they picked. Departures and returns
+cache separately, so re-opening the same one is free.
 
 ## Testing
 

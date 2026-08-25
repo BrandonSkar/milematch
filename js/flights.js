@@ -38,6 +38,22 @@ window.PB = window.PB || {};
 
   /** Live search through the Worker proxy. */
   PB.flights.searchLive = function (q, settings) {
+    return proxySearch(q, settings, null);
+  };
+
+  /* Round trips are searched in two steps, the same way Google Flights does
+   * it: the first call lists departures, and each departure carries a token
+   * that asks "given THIS outbound, what are the ways back?". The price that
+   * comes back is the trip total for that pairing, not the return leg alone.
+   *
+   * It costs a second lookup against a shared monthly allowance, so the app
+   * only makes this call when someone actually asks to see the returns. */
+  PB.flights.searchReturns = function (q, settings, departureToken) {
+    if (!departureToken) return Promise.resolve([]);
+    return proxySearch(q, settings, departureToken);
+  };
+
+  function proxySearch(q, settings, departureToken) {
     var base = PB.flights.proxyUrl(settings).replace(/\/+$/, '');
     var params = new URLSearchParams({
       origin: q.from,
@@ -54,6 +70,9 @@ window.PB = window.PB || {};
     if (q.airlines && q.airlines.length) {
       params.set('includedAirlineCodes', q.airlines.join(','));
     }
+    /* The token only means anything alongside the search it came from, so it
+     * is added to the same parameters rather than sent on its own. */
+    if (departureToken) params.set('departureToken', departureToken);
 
     return fetch(base + '/search?' + params.toString(), {
       headers: { 'Accept': 'application/json' }
@@ -66,9 +85,9 @@ window.PB = window.PB || {};
       return r.json();
     }).then(function (json) {
       // The worker normalises provider quirks, so the browser just reads them.
-      return (json && json.offers) || [];
+      return ((json && json.offers) || []).map(PB.flights.readFareTerms);
     });
-  };
+  }
 
   /* SerpApi's Google Flights travel_class: 1 economy, 2 premium economy,
    * 3 business, 4 first. */
@@ -165,14 +184,21 @@ window.PB = window.PB || {};
       if (seen[key]) return;
       seen[key] = true;
 
+      /* Copied results carry Google's baggage notes too — "Carry-on bag not
+       * included", "1st checked bag: $40" — so the pasted path can say what a
+       * fare covers instead of shrugging. Silence still means unknown. */
+      var notes = lines.slice(start, idx + 1).filter(function (l) {
+        return FEE_NOTE.test(l);
+      });
+
       offers.push({
         id: 'paste-' + offers.length,
         price: price,
         currency: 'USD',
         carriers: carriers.length ? carriers : ['Unknown airline'],
         carrierCodes: carriers.map(codeFor).filter(Boolean),
-        // Nothing in copied text says what the fare includes.
-        bags: { checked: null, cabin: null },
+        bags: PB.flights.readBags(window),
+        extensions: notes,
         itineraries: [],
         stops: stops == null ? null : stops,
         durationText: duration,
@@ -190,6 +216,105 @@ window.PB = window.PB || {};
     })[0];
     return hit ? hit.code : null;
   }
+
+  /* -------------------------------------------------------------------
+   * What the fare actually covers.
+   *
+   * Airlines unbundled the ticket years ago: the headline price may or may
+   * not carry a carry-on, a checked bag, or a seat you get to choose. Google
+   * says so in free-text notes ("Carry-on bag not included", "1st checked
+   * bag: $40"), which is the only place that information exists.
+   *
+   * THREE states have to stay distinct, and collapsing any two of them lies
+   * to the person booking:
+   *    a number  - included, and how many
+   *    0         - explicitly NOT included, so it is an extra charge
+   *    null      - nobody said, so the app must not claim either way
+   * ----------------------------------------------------------------- */
+
+  /** Read baggage terms out of whatever free text a provider gave us. */
+  PB.flights.readBags = function (text) {
+    var t = String(text || '').toLowerCase();
+
+    var cabinFee = feeNear(t, 'carry[- ]?on');
+    var checkedFee = feeNear(t, 'checked bag(?:gage)?');
+
+    /* "not included" contains "included", so the exclusions must be tested
+     * first or every unbundled fare reads as a bundled one. */
+    var cabin = null;
+    if (cabinFee != null || /carry[- ]?on[^|]{0,24}(?:not included|for a fee)|no carry[- ]?on|overhead bin[^|]{0,20}(?:unavailable|not included)/.test(t)) cabin = 0;
+    else if (/carry[- ]?on[^|]{0,24}included|free carry[- ]?on/.test(t)) cabin = 1;
+
+    var checked = null;
+    var freeBags = /(\d+)\s*(?:free\s*)?checked bags?\b/.exec(t);
+    if (checkedFee != null || /checked bag(?:gage)?[^|]{0,24}(?:not included|for a fee)/.test(t)) checked = 0;
+    else if (freeBags) checked = parseInt(freeBags[1], 10);
+    else if (/free checked bag/.test(t)) checked = 1;
+
+    return { cabin: cabin, checked: checked, cabinFee: cabinFee, checkedFee: checkedFee };
+  };
+
+  /* A price has to be attached to the bag it belongs to. The character class
+   * stops at the note separator and at the dollar sign itself, so a fee can
+   * never be dragged in from the note next door. */
+  function feeNear(text, phrase) {
+    var m = new RegExp(phrase + '[^|$]{0,20}\\$\\s?(\\d[\\d,]*)').exec(text);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+  }
+
+  /* A line that says something about what the ticket does or does not cover.
+   * Shared, so the pasted path captures exactly what feeNotes() later quotes. */
+  var FEE_NOTE = /\bbags?\b|baggage|carry[- ]?on|overhead bin|seat selection/i;
+
+  /** Notes worth quoting back verbatim — the provider's own words beat any
+   *  paraphrase when money is involved. */
+  PB.flights.feeNotes = function (offer) {
+    return ((offer && offer.extensions) || []).filter(function (line) {
+      return FEE_NOTE.test(line);
+    });
+  };
+
+  /* Fill in the fare terms the worker forwards. Parsing lives here rather
+   * than in the worker so pasted text and live offers are read by exactly one
+   * set of rules — and so a worker deployed before this existed still works:
+   * its own coarser `bags` is used when no notes came with the offer. */
+  PB.flights.readFareTerms = function (offer) {
+    var notes = (offer && offer.extensions) || [];
+    if (!notes.length) return offer;
+    var read = PB.flights.readBags(notes.join(' | '));
+    var was = offer.bags || {};
+    var stated = function (a, b) { return a != null ? a : (b != null ? b : null); };
+    offer.bags = {
+      cabin: stated(read.cabin, was.cabin),
+      checked: stated(read.checked, was.checked),
+      cabinFee: read.cabinFee,
+      checkedFee: read.checkedFee
+    };
+    return offer;
+  };
+
+  /**
+   * Sort a fare's terms into what you get, what you pay extra for, and what
+   * nobody stated. All three are rendered: an unlabelled fare is not the same
+   * as a fare that includes nothing.
+   */
+  PB.flights.fareExtras = function (offer) {
+    var b = (offer && offer.bags) || {};
+    var included = [], extra = [], unknown = [];
+
+    function sort(label, count, fee) {
+      if (count == null) { unknown.push(label); return; }
+      if (count > 0) {
+        included.push(count > 1 ? count + ' ' + label + 's' : label);
+        return;
+      }
+      extra.push({ label: label, amount: fee == null ? null : fee });
+    }
+
+    sort('carry-on bag', b.cabin, b.cabinFee);
+    sort('checked bag', b.checked, b.checkedFee);
+    return { included: included, extra: extra, unknown: unknown };
+  };
 
   /** Client-side filters for things Amadeus can't express as query params. */
   PB.flights.applyFilters = function (offers, filters) {

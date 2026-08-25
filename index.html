@@ -209,9 +209,9 @@
   <div id="offersWrap" hidden>
     <h2 class="section-title">Real flights, cash prices</h2>
     <p class="hint offers-explain">
-      These are actual bookable fares. <b>Tap one</b> to see its full itinerary and
-      work out what the same trip would cost in points instead — the comparison below
-      updates to whichever flight you pick.
+      These are actual bookable fares. <b>Tap one</b> to see its full itinerary, exactly
+      what the price does and does not cover, and — on a round trip — the other ways back.
+      The points comparison below follows whichever flight you pick.
     </p>
     <div id="offers" class="offers"></div>
     <button type="button" id="jumpToPoints" class="jump-btn" hidden>
@@ -284,19 +284,26 @@
 <section class="panel" id="panel-settings" role="tabpanel">
   <div class="card">
     <h2>Live fare lookup</h2>
-    <p class="hint">
-      Optional. Paste the URL of your deployed Cloudflare Worker to pull real cash fares from Amadeus.
-      Setup instructions are in <code>worker/README.md</code>. Without this the app works fine — you
-      just type the cash price yourself.
-    </p>
-    <label class="field">
-      <span>Worker URL</span>
-      <input id="proxyInput" type="url" placeholder="https://milematch.yourname.workers.dev">
-    </label>
+    <p class="hint" id="proxyIntro"></p>
     <div class="row">
       <button id="testProxy" class="btn">Test connection</button>
       <span id="proxyStatus" class="hint"></span>
     </div>
+
+    <!-- Pointing somewhere else is a developer's job, not a visitor's: a local
+         `wrangler dev`, or your own SerpApi allowance instead of the site's.
+         Folded away so Settings does not open on a box nobody has to fill in. -->
+    <details class="advanced">
+      <summary>Use a different worker</summary>
+      <label class="field">
+        <span>Worker URL</span>
+        <input id="proxyInput" type="url" placeholder="https://milematch.yourname.workers.dev">
+      </label>
+      <p class="hint">
+        Leave this empty to use the site's own lookup. Deploying your own takes about five
+        minutes — see <code>worker/README.md</code>.
+      </p>
+    </details>
   </div>
 
   <div class="card">
