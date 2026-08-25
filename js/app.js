@@ -1262,12 +1262,76 @@
   function bindBalances() {
     $('#clearBalances').addEventListener('click', function () {
       if (!confirm('Clear every balance you have entered? This cannot be undone.')) return;
-      PB.store.patch({ balances: {} });
+      PB.store.patch({ balances: {}, balanceUpdated: {} });
       state.balances = {};
+      state.balanceUpdated = {};
       PB.store.save();
       renderBalances();
       updateBalanceChip();
     });
+
+    /* Read as you paste, but do NOT write anything yet. Overwriting balances
+     * the moment text lands in a box would be a data-loss bug waiting for a
+     * stray paste: the numbers are shown first and applied on request. */
+    var pending = [];
+    $('#balancePaste').addEventListener('input', function () {
+      var read = PB.parseBalances(this.value);
+      pending = read.found;
+      renderBalancePreview(read, this.value);
+    });
+
+    $('#applyBalances').addEventListener('click', function () {
+      pending.forEach(function (b) { PB.store.setBalance(b.id, b.value); });
+      state = PB.store.state;
+      $('#balancePaste').value = '';
+      $('#balancePreview').hidden = true;
+      this.hidden = true;
+      $('#balancePasteStatus').textContent =
+        'Updated ' + pending.length + ' balance' + (pending.length > 1 ? 's' : '') + '.';
+      pending = [];
+      renderBalances();
+      updateBalanceChip();
+    });
+  }
+
+  function renderBalancePreview(read, raw) {
+    var box = $('#balancePreview');
+    var status = $('#balancePasteStatus');
+    var apply = $('#applyBalances');
+
+    if (!raw.trim()) {
+      box.hidden = true; apply.hidden = true; status.textContent = '';
+      return;
+    }
+
+    if (!read.found.length) {
+      box.hidden = true;
+      apply.hidden = true;
+      status.textContent = read.unmatched.length
+        ? 'Found ' + read.unmatched.join(', ') + ' but no balance next to it. Copy the part of the page showing the number.'
+        : 'No balances recognised in that text. Copy the page that lists your points.';
+      return;
+    }
+
+    /* Show what it will do before it does it, including what it is about to
+     * overwrite - a balance replaced by a bad parse is silent data loss. */
+    box.hidden = false;
+    box.innerHTML = read.found.map(function (b) {
+      var was = state.balances[b.id];
+      return '<div class="bp-row">' +
+        '<span class="bp-name">' + esc(b.name) + '</span>' +
+        '<span class="bp-value">' + PB.fmt.miles(b.value) + '</span>' +
+        '<span class="bp-was">' +
+          (was == null ? 'new'
+           : was === b.value ? 'unchanged'
+           : 'was ' + PB.fmt.miles(was)) +
+        '</span></div>';
+    }).join('');
+
+    apply.hidden = false;
+    status.textContent = read.unmatched.length
+      ? 'Could not find a number for ' + read.unmatched.join(', ') + '.'
+      : '';
   }
 
   function renderBalances() {
@@ -1277,12 +1341,17 @@
       host.innerHTML = '';
       entries.forEach(function (e) {
         var val = state.balances[e.id] || 0;
+        var when = state.balanceUpdated[e.id];
         var div = document.createElement('div');
         div.className = 'balance-row' + (val ? ' has-value' : '');
         div.innerHTML =
           '<label for="bal-' + e.id + '">' + esc(e.name) + '</label>' +
           '<span class="sub">' + esc(e.sub) + '</span>' +
           '<input id="bal-' + e.id + '" type="number" min="0" step="1000" placeholder="0" value="' + (val || '') + '">' +
+          /* A number typed in April looks identical to one typed today, and
+           * with hand-entered balances that is the whole failure mode. */
+          (val ? '<span class="age' + (PB.balanceIsStale(when) ? ' is-stale' : '') + '">' +
+                 esc(PB.balanceAgeText(when)) + '</span>' : '') +
           (sim[e.id] ? '<span class="sim">+' + PB.fmt.miles(sim[e.id]) + ' simulated from cards</span>' : '');
         var input = $('input', div);
         input.addEventListener('input', function () {

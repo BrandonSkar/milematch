@@ -18,7 +18,7 @@ function loadPB() {
   ctx.window = ctx;
   vm.createContext(ctx);
   ['data/config.js', 'data/airports.js', 'data/programs.js', 'data/charts.js',
-   'data/cards.js', 'js/engine.js', 'js/flights.js']
+   'data/cards.js', 'js/engine.js', 'js/flights.js', 'js/balances.js']
     .forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   ctx.PB.loadAirports();
   return ctx;
@@ -1043,4 +1043,111 @@ test('every live lookup varies a parameter the browser cache respects', async ()
   };
   assert.strictEqual(strip(calls[0]), strip(calls[1]),
     'the buster is the ONLY difference, so the edge still answers from cache');
+});
+
+/* ── Reading balances out of a copied rewards page ─────────── */
+
+test('a copied rewards page fills in every balance it names', () => {
+  const r = PB.parseBalances(`
+Welcome back
+Ultimate Rewards
+84,062 points
+Chase Sapphire Preferred ...1234
+Available credit $8,300
+`);
+  const byId = {};
+  r.found.forEach((b) => { byId[b.id] = b.value; });
+  assert.strictEqual(byId.UR, 84062, 'the number under the programme name');
+  assert.strictEqual(r.found.length, 1, 'a credit limit is not a points balance');
+});
+
+test('balances are read from the same line, the next, or the one above', () => {
+  const same = PB.parseBalances('AAdvantage miles 52,140');
+  assert.strictEqual(same.found[0].id, 'AA');
+  assert.strictEqual(same.found[0].value, 52140);
+
+  const below = PB.parseBalances('Mileage Plan\n61,900 miles');
+  assert.strictEqual(below.found[0].id, 'AS');
+  assert.strictEqual(below.found[0].value, 61900);
+
+  const above = PB.parseBalances('12,500 points\nRapid Rewards balance');
+  assert.strictEqual(above.found[0].id, 'WN');
+  assert.strictEqual(above.found[0].value, 12500);
+});
+
+test('years and account numbers are not mistaken for balances', () => {
+  // A statement date next to a programme name must not become the balance.
+  const r = PB.parseBalances('SkyMiles\nStatement closing 2026\n48,300 miles available');
+  assert.strictEqual(r.found[0].id, 'DL');
+  assert.strictEqual(r.found[0].value, 48300, 'the labelled number wins over the year');
+});
+
+test('a programme with no number nearby is reported, not guessed', () => {
+  const r = PB.parseBalances('Membership Rewards\nSee your account for details');
+  assert.strictEqual(r.found.length, 0);
+  assert.deepStrictEqual([...r.unmatched], ['Amex MR'],
+    'silence must be reported rather than filled in with a number from elsewhere');
+});
+
+/* Avios is one currency across three programmes, so the word alone cannot say
+ * which account it belongs to. Guessing would put points in the wrong one. */
+test('an ambiguous Avios balance is not assigned to a programme', () => {
+  const bare = PB.parseBalances('Avios\n52,000');
+  assert.strictEqual(bare.found.length, 0, 'bare "Avios" names no single programme');
+
+  const named = PB.parseBalances('Iberia Plus\n52,000 Avios');
+  assert.strictEqual(named.found[0].id, 'IB');
+  assert.strictEqual(named.found[0].value, 52000);
+});
+
+test('several programmes in one paste all come through', () => {
+  const r = PB.parseBalances(`
+Membership Rewards      125,430
+Mileage Plan             61,900
+Aeroplan                 24,000
+LifeMiles                 9,800
+`);
+  const ids = r.found.map((b) => b.id).sort();
+  assert.deepStrictEqual([...ids], ['AC', 'AS', 'AV', 'MR']);
+  // Sorted biggest first, so the preview leads with what matters.
+  assert.strictEqual(r.found[0].id, 'MR');
+});
+
+test('nothing recognisable yields nothing, rather than noise', () => {
+  const r = PB.parseBalances('Your order #4821 shipped on 2026-08-25 for $1,240.00');
+  assert.strictEqual(r.found.length, 0);
+  assert.strictEqual(r.unmatched.length, 0);
+});
+
+/* ── Balance age ───────────────────────────────────────────── */
+
+test('a balance says how old it is, and when it is too old to trust', () => {
+  const today = '2026-08-25T12:00:00Z';
+  assert.strictEqual(PB.balanceAgeText('2026-08-25', today), 'updated today');
+  assert.strictEqual(PB.balanceAgeText('2026-08-24', today), 'updated yesterday');
+  assert.strictEqual(PB.balanceAgeText('2026-08-05', today), 'updated 20 days ago');
+  assert.strictEqual(PB.balanceAgeText('2026-04-25', today), 'updated about 4 months ago');
+  assert.strictEqual(PB.balanceAgeText(null, today), 'never updated');
+
+  assert.strictEqual(PB.balanceIsStale('2026-08-05', today), false);
+  assert.strictEqual(PB.balanceIsStale('2026-04-25', today), true);
+  assert.strictEqual(PB.balanceIsStale(null, today), true,
+    'a balance with no date is exactly as untrustworthy as an ancient one');
+});
+
+/* Regression: the search for a number ran past the line where the NEXT
+ * programme starts, so a name with no balance stole its neighbour's. */
+test('a programme with no number cannot take the next one down', () => {
+  const r = PB.parseBalances('Membership Rewards\nMileage Plan\n61,900 miles');
+  const byId = {};
+  r.found.forEach((b) => { byId[b.id] = b.value; });
+  assert.strictEqual(byId.AS, 61900, 'the balance belongs to the name above it');
+  assert.strictEqual(byId.MR, undefined, 'and Amex gets nothing, correctly');
+  assert.deepStrictEqual([...r.unmatched], ['Amex MR']);
+});
+
+test('a number two lines below its name is still found', () => {
+  const r = PB.parseBalances('SkyMiles\nStatement closing 2026\n48,300 miles available');
+  assert.strictEqual(r.found[0].id, 'DL');
+  assert.strictEqual(r.found[0].value, 48300);
 });

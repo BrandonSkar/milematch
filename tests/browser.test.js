@@ -516,7 +516,9 @@ test('one click drops the simulated cards and re-prices on real points', maybe, 
     return {
       warningGone: !document.querySelector('.sim-warning'),
       ticked: document.querySelectorAll('#cardList .cc.is-on').length,
-      chip: document.querySelector('#balanceChip').textContent
+      chip: document.querySelector('#balanceChip').textContent,
+      real: [...document.querySelectorAll('.balance-row input')].filter(i=>i.value).map(i=>i.id+'='+i.value).join(','),
+      sim: document.querySelectorAll('#cardList .cc.is-on').length
     };
   })()`);
 
@@ -925,4 +927,96 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
   const back = await readRanked();
   assert.deepStrictEqual([...back.map((r) => r.program)], [...byValue.map((r) => r.program)],
     'and it is reversible');
+});
+
+/* Pasting a rewards page is the closest thing to automatic that exists without
+ * a backend or somebody's airline password. It must never overwrite silently. */
+test('pasting a rewards page previews balances before changing anything', maybe, async () => {
+  const r = await evaluate(`(() => {
+    // Earlier tests may leave a modelled card bonus on; the chip counts those.
+    document.querySelectorAll('#cardList .cc.is-on input').forEach(i => i.click());
+    [...document.querySelectorAll('.tab')].find(t => t.dataset.tab === 'balances').click();
+    document.querySelectorAll('.balance-row input').forEach(el => {
+      if (el.value) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    const mr = document.querySelector('#bal-MR');
+    mr.value = 1000;
+    mr.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const box = document.querySelector('#balancePaste');
+    box.value = [
+      'Membership Rewards', '125,430 points',
+      'Mileage Plan', '61,900 miles',
+      'Aeroplan', '24,000'
+    ].join(String.fromCharCode(10));
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+
+    return {
+      rows: [...document.querySelectorAll('#balancePreview .bp-row')].map(r => ({
+        name: r.querySelector('.bp-name').textContent,
+        value: r.querySelector('.bp-value').textContent,
+        was: r.querySelector('.bp-was').textContent
+      })),
+      applyShown: !document.querySelector('#applyBalances').hidden,
+      mrStillOld: document.querySelector('#bal-MR').value
+    };
+  })()`);
+
+  assert.strictEqual(r.rows.length, 3, 'all three balances read out of one paste');
+  assert.strictEqual(r.rows[0].name, 'Amex MR', 'largest first');
+  assert.strictEqual(r.rows[0].value, '125,430');
+  assert.match(r.rows[0].was, /was 1,000/, 'it must show what it would overwrite');
+  assert.ok(r.applyShown);
+  assert.strictEqual(r.mrStillOld, '1000', 'and change nothing until asked');
+});
+
+test('applying the paste fills the balances and dates them', maybe, async () => {
+  const r = await evaluate(`(() => {
+    document.querySelector('#applyBalances').click();
+    const ageOf = (id) => {
+      const row = document.querySelector('#bal-' + id).closest('.balance-row');
+      const age = row.querySelector('.age');
+      return age ? age.textContent : '';
+    };
+    return {
+      mr: document.querySelector('#bal-MR').value,
+      as: document.querySelector('#bal-AS').value,
+      ac: document.querySelector('#bal-AC').value,
+      age: ageOf('MR'),
+      stale: !!document.querySelector('#bal-MR').closest('.balance-row').querySelector('.age.is-stale'),
+      status: document.querySelector('#balancePasteStatus').textContent,
+      boxCleared: document.querySelector('#balancePaste').value === '',
+      // "Points you hold" is the real total, independent of any card bonus
+      // being modelled — which the chip deliberately includes.
+      held: document.querySelector('#balanceSummary dd').textContent
+    };
+  })()`);
+
+  assert.strictEqual(r.mr, '125430');
+  assert.strictEqual(r.as, '61900');
+  assert.strictEqual(r.ac, '24000');
+  assert.match(r.status, /Updated 3 balances/);
+  assert.ok(r.boxCleared, 'the box empties so a stale paste cannot be reapplied');
+  assert.strictEqual(r.age, 'updated today', 'a balance records when it was set');
+  assert.strictEqual(r.stale, false, 'and a fresh one is not flagged');
+  assert.strictEqual(r.held, '211,330', 'the three balances land as the real total');
+});
+
+test('an unrecognised paste says so and touches nothing', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const before = document.querySelector('#bal-MR').value;
+    const box = document.querySelector('#balancePaste');
+    box.value = 'Your order #4821 shipped on 2026-08-25 for $1,240.00';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+      status: document.querySelector('#balancePasteStatus').textContent,
+      previewHidden: document.querySelector('#balancePreview').hidden,
+      applyHidden: document.querySelector('#applyBalances').hidden,
+      unchanged: document.querySelector('#bal-MR').value === before
+    };
+  })()`);
+
+  assert.match(r.status, /No balances recognised/i);
+  assert.ok(r.previewHidden && r.applyHidden, 'nothing to apply, so nothing offered');
+  assert.ok(r.unchanged);
 });

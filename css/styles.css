@@ -604,6 +604,24 @@ kbd {
 .balance-row .sub { font-size: .7rem; color: var(--text-faint); }
 .balance-row input { font-family: var(--mono); text-align: right; }
 .balance-row.has-value input { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.balance-row .age { font-size: .66rem; color: var(--text-faint); }
+/* Amber, because an old balance is the one thing here that quietly misleads. */
+.balance-row .age.is-stale { color: var(--warn); }
+
+/* ── Pasted balances, shown before anything is overwritten ───── */
+.balance-preview {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); padding: .3rem .6rem; margin: .5rem 0 .6rem;
+}
+.bp-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: .8rem;
+  align-items: baseline; padding: .28rem 0; font-size: .82rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+.bp-row:last-child { border-bottom: 0; }
+.bp-name { font-weight: 600; }
+.bp-value { font-family: var(--mono); font-weight: 700; }
+.bp-was { font-size: .68rem; color: var(--text-faint); font-family: var(--mono); min-width: 6.5rem; text-align: right; }
 .balance-row .sim { font-size: .68rem; color: var(--great); font-weight: 600; }
 
 .summary { display: flex; flex-wrap: wrap; gap: 1.4rem; margin-bottom: .8rem; }

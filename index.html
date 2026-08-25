@@ -224,6 +224,22 @@
 <!-- ────────────────────────── BALANCES ────────────────────────── -->
 <section class="panel" id="panel-balances" role="tabpanel">
   <div class="card">
+    <h2>Update every balance at once</h2>
+    <p class="hint">
+      Open your card or airline account, select the page with <kbd>Ctrl</kbd>+<kbd>A</kbd>,
+      copy, and paste below. Every balance the app recognises is read out and filled in —
+      no typing, no account, no password. Nothing leaves this device.
+    </p>
+    <textarea id="balancePaste" class="paste-box"
+              placeholder="Paste a copied rewards page here…"></textarea>
+    <div id="balancePreview" class="balance-preview" hidden></div>
+    <div class="row">
+      <button type="button" id="applyBalances" class="btn btn-primary" hidden>Apply these balances</button>
+      <span id="balancePasteStatus" class="hint"></span>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Transferable points</h2>
     <p class="hint">Points your credit cards earn directly. These can move into airline programs, usually 1:1.</p>
     <div id="currencyBalances" class="balance-grid"></div>
@@ -349,6 +365,7 @@
 <script src="data/cards.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/flights.js"></script>
+<script src="js/balances.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app.js"></script>
 </body>

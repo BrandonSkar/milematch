@@ -10,6 +10,11 @@ window.PB = window.PB || {};
 
   var DEFAULTS = {
     balances: {},          // { UR: 60000, AC: 12000, ... }
+    /* When each balance was last set, ISO date, kept ALONGSIDE the amounts
+     * rather than inside them. The engine takes balances as plain
+     * { id: number } and so do the tests; wrapping every amount in an object
+     * to carry one date would ripple through all of it for no gain. */
+    balanceUpdated: {},    // { UR: '2026-08-25', ... }
     simulatedCards: [],    // card ids whose welcome bonus is being modelled
     customCards: [],       // user-defined cards
     settings: {
@@ -65,8 +70,13 @@ window.PB = window.PB || {};
     },
 
     setBalance: function (id, value) {
-      if (!value || value <= 0) delete this.state.balances[id];
-      else this.state.balances[id] = Math.round(value);
+      if (!value || value <= 0) {
+        delete this.state.balances[id];
+        delete this.state.balanceUpdated[id];
+      } else {
+        this.state.balances[id] = Math.round(value);
+        this.state.balanceUpdated[id] = new Date().toISOString().slice(0, 10);
+      }
       this.save();
     },
 
