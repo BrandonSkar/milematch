@@ -58,18 +58,24 @@
   <form id="searchForm" class="card search-card">
     <div class="grid grid-route">
       <label class="field">
-        <span>From</span>
-        <input id="fromInput" list="airportList" placeholder="SFO" maxlength="3"
-               autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+        <span>From <small>add several to compare</small></span>
+        <div class="multi" id="fromMulti">
+          <span class="multi-chips" id="fromChips"></span>
+          <input id="fromInput" list="airportList" placeholder="SFO" maxlength="3"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false">
+        </div>
         <small id="fromHint" class="hint"></small>
       </label>
 
-      <button type="button" id="swapBtn" class="swap" title="Swap origin and destination" aria-label="Swap">⇄</button>
+      <button type="button" id="swapBtn" class="swap" title="Swap origins and destinations" aria-label="Swap">⇄</button>
 
       <label class="field">
-        <span>To</span>
-        <input id="toInput" list="airportList" placeholder="NRT" maxlength="3"
-               autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+        <span>To <small>add several to compare</small></span>
+        <div class="multi" id="toMulti">
+          <span class="multi-chips" id="toChips"></span>
+          <input id="toInput" list="airportList" placeholder="NRT" maxlength="3"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false">
+        </div>
         <small id="toHint" class="hint"></small>
       </label>
     </div>
@@ -97,6 +103,17 @@
         <input id="paxInput" type="number" min="1" max="9" value="1">
       </label>
     </div>
+
+    <details class="ground-field" id="groundField" hidden>
+      <summary>Getting to the airport<span id="groundSummary"></span></summary>
+      <p class="hint">
+        The cheapest fare is regularly not the cheapest trip. Put in what each
+        airport actually costs you to use and the comparison is ranked on the
+        total rather than the ticket. A blank row counts as free.
+      </p>
+      <div id="groundRows"></div>
+      <p class="hint" id="groundRates"></p>
+    </details>
 
     <div class="toggle-row">
       <label class="toggle">
@@ -137,6 +154,7 @@
     </div>
 
     <p class="hint filters-note" id="filtersNote"></p>
+    <p class="hint warn" id="comboCost" hidden></p>
 
     <fieldset class="fare-source">
       <legend>Which loyalty programs to show</legend>
@@ -206,6 +224,17 @@
   </form>
 
   <div id="searchStatus" class="status" hidden></div>
+
+  <div id="comboWrap" hidden>
+    <h2 class="section-title">Which airports</h2>
+    <p class="hint offers-explain">
+      Every pair you picked, ranked by what the <b>whole trip</b> costs — the fare
+      plus the driving, parking and fuel to use that airport. <b>Tap one</b> to load
+      its flights below and price it in points.
+    </p>
+    <div id="comboList" class="combo-list"></div>
+  </div>
+
   <div id="offersWrap" hidden>
     <h2 class="section-title">Real flights, cash prices</h2>
     <p class="hint offers-explain">
@@ -223,22 +252,6 @@
 
 <!-- ────────────────────────── BALANCES ────────────────────────── -->
 <section class="panel" id="panel-balances" role="tabpanel">
-  <div class="card">
-    <h2>Update every balance at once</h2>
-    <p class="hint">
-      Open your card or airline account, select the page with <kbd>Ctrl</kbd>+<kbd>A</kbd>,
-      copy, and paste below. Every balance the app recognises is read out and filled in —
-      no typing, no account, no password. Nothing leaves this device.
-    </p>
-    <textarea id="balancePaste" class="paste-box"
-              placeholder="Paste a copied rewards page here…"></textarea>
-    <div id="balancePreview" class="balance-preview" hidden></div>
-    <div class="row">
-      <button type="button" id="applyBalances" class="btn btn-primary" hidden>Apply these balances</button>
-      <span id="balancePasteStatus" class="hint"></span>
-    </div>
-  </div>
-
   <div class="card">
     <h2>Transferable points</h2>
     <p class="hint">Points your credit cards earn directly. These can move into airline programs, usually 1:1.</p>
@@ -298,6 +311,31 @@
 
 <!-- ────────────────────────── SETTINGS ────────────────────────── -->
 <section class="panel" id="panel-settings" role="tabpanel">
+  <div class="card">
+    <h2>What driving is worth</h2>
+    <p class="hint">
+      Used to rank airports on what the whole trip costs rather than the fare
+      alone. The hourly figure is what an hour behind the wheel is worth to you
+      — not your salary, since a drive was never billable. The mileage figure is
+      fuel and wear, not the IRS rate, which folds in costs you pay whether the
+      car moves or not.
+    </p>
+    <div class="grid grid-4">
+      <label class="field">
+        <span>Per hour driving</span>
+        <div class="input-prefix">
+          <em>$</em><input id="drivePerHour" type="number" min="0" step="1" placeholder="25">
+        </div>
+      </label>
+      <label class="field">
+        <span>Per mile, fuel and wear</span>
+        <div class="input-prefix">
+          <em>$</em><input id="drivePerMile" type="number" min="0" step="0.01" placeholder="0.20">
+        </div>
+      </label>
+    </div>
+  </div>
+
   <div class="card">
     <h2>Live fare lookup</h2>
     <p class="hint" id="proxyIntro"></p>
@@ -365,6 +403,7 @@
 <script src="data/cards.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/flights.js"></script>
+<script src="js/drive.js"></script>
 <script src="js/balances.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app.js"></script>

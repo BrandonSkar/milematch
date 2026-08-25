@@ -139,6 +139,14 @@ test('balances, cards and search settings persist across a reload', maybe, async
   await evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -158,8 +166,8 @@ test('balances, cards and search settings persist across a reload', maybe, async
   const after = await evaluate(`({
     ur: document.querySelector('#bal-UR').value,
     as: document.querySelector('#bal-AS').value,
-    from: document.querySelector('#fromInput').value.toUpperCase(),
-    to: document.querySelector('#toInput').value.toUpperCase(),
+    from: [...document.querySelectorAll('#fromChips .apt-chip')].map(c => c.firstChild.textContent).join(),
+    to: [...document.querySelectorAll('#toChips .apt-chip')].map(c => c.firstChild.textContent).join(),
     customCard: [...document.querySelectorAll('#cardList .cc-name')]
       .some(n => n.textContent === 'Persist Test Card'),
     keys: Object.keys(localStorage)
@@ -186,102 +194,153 @@ test('app boots with no uncaught exceptions', maybe, async () => {
   assert.deepStrictEqual(pageErrors, []);
 });
 
-test('typing into an empty airport field works', maybe, async () => {
-  await evaluate(`(() => { const e = document.querySelector('#fromInput'); e.value=''; e.focus(); })()`);
+/* ── Picking airports ──────────────────────────────────────────
+ *
+ * Both sides take several codes. The box you type into is not the value — it
+ * is only how a chip gets added — so these read the chips, not the input.
+ *
+ * The old select-on-focus and replace-on-next-key tests are gone with the
+ * single-value field they guarded: the box empties after every chip, so there
+ * is never a full field to retype over. */
+
+const chipsOn = (side) => evaluate(
+  `[...document.querySelectorAll('#${side}Chips .apt-chip')].map(c => c.firstChild.textContent)`);
+
+const clearSides = () => evaluate(`(() => {
+  document.querySelectorAll('.apt-chip button').forEach(b => b.click());
+  ['#fromInput', '#toInput'].forEach(s => {
+    const e = document.querySelector(s);
+    e.value = '';
+    e.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+})()`);
+
+test('a completed code becomes a chip on its own', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
   await typeText('sea');
+
   const state = await evaluate(`({
-    value: document.querySelector('#fromInput').value.toUpperCase(),
+    chips: [...document.querySelectorAll('#fromChips .apt-chip')].map(c => c.firstChild.textContent),
+    box: document.querySelector('#fromInput').value,
     hint: document.querySelector('#fromHint').textContent
   })`);
-  assert.strictEqual(state.value, 'SEA');
-  assert.match(state.hint, /Seattle/);
+
+  assert.deepStrictEqual(state.chips, ['SEA'], 'three characters is a whole IATA code');
+  assert.strictEqual(state.box, '', 'and the box clears, ready for the next one');
+  assert.match(state.hint, /1 airport selected/);
 });
 
-/* The regression: a field already holding a code used to swallow every
- * keystroke, because the input handler truncated back to 3 characters.
- * This is the state the app restores you into on every visit. */
-test('a field that already holds a code can be retyped after clicking it', maybe, async () => {
-  await evaluate(`(() => {
-    const e = document.querySelector('#fromInput');
-    e.value = 'SEA';
-    e.dispatchEvent(new Event('input', { bubbles: true }));
-    e.blur();
-  })()`);
-
-  await clickField('#fromInput');   // click should select the existing code
-  await typeText('sfo');
-
-  const value = await evaluate(`document.querySelector('#fromInput').value.toUpperCase()`);
-  assert.strictEqual(value, 'SFO', 'typing over an existing code must replace it');
+test('several airports can be picked on one side', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
+  await typeText('geg');
+  assert.deepStrictEqual(await chipsOn('from'), ['SEA', 'PDX', 'GEG']);
 });
 
-/* And the harder case: the field is already focused with the caret parked at
- * the end, so there is no click or focus event left to trigger a selection. */
-test('a full, already-focused field still accepts new input', maybe, async () => {
-  await evaluate(`(() => {
-    const e = document.querySelector('#toInput');
-    e.value = 'SNA';
-    e.dispatchEvent(new Event('input', { bubbles: true }));
-    e.focus();
-    e.setSelectionRange(3, 3);   // caret at the end, nothing selected
-  })()`);
-
-  await typeText('lax');
-
-  const value = await evaluate(`document.querySelector('#toInput').value.toUpperCase()`);
-  assert.strictEqual(value, 'LAX', 'a full field must not silently eat keystrokes');
+test('the same airport twice is ignored rather than duplicated', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('sea');
+  assert.deepStrictEqual(await chipsOn('from'), ['SEA'],
+    'a duplicate would be searched twice for the same answer');
 });
 
-test('clicking a populated field selects its contents', maybe, async () => {
-  await evaluate(`(() => {
-    const e = document.querySelector('#toInput');
-    e.value = 'NRT';
-    e.dispatchEvent(new Event('input', { bubbles: true }));
-    e.blur();
-  })()`);
-  await clickField('#toInput');
-  const sel = await evaluate(`({
-    start: document.querySelector('#toInput').selectionStart,
-    end: document.querySelector('#toInput').selectionEnd
-  })`);
-  assert.strictEqual(sel.start, 0);
-  assert.strictEqual(sel.end, 3);
+test('a chip is removed by its own button', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
+  await evaluate(`document.querySelectorAll('#fromChips .apt-chip button')[0].click()`);
+  assert.deepStrictEqual(await chipsOn('from'), ['PDX']);
 });
 
-test('backspace still clears a field character by character', maybe, async () => {
-  await evaluate(`(() => {
-    const e = document.querySelector('#fromInput');
-    e.value = 'SEA';
-    e.dispatchEvent(new Event('input', { bubbles: true }));
-    e.focus();
-    e.setSelectionRange(3, 3);
-  })()`);
-  await pressKey('Backspace', 8);
-  assert.strictEqual(await evaluate(`document.querySelector('#fromInput').value.toUpperCase()`), 'SE');
-  await pressKey('Backspace', 8);
-  assert.strictEqual(await evaluate(`document.querySelector('#fromInput').value.toUpperCase()`), 'S');
-});
+test('backspace in an empty box pulls the last chip back to edit', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
 
-test('maxlength keeps codes to three characters', maybe, async () => {
-  await evaluate(`(() => { const e = document.querySelector('#fromInput'); e.value=''; e.focus(); })()`);
-  await typeText('seattle');
-  const value = await evaluate(`document.querySelector('#fromInput').value`);
-  assert.strictEqual(value.length, 3);
-});
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
 
-test('the swap button exchanges origin and destination', maybe, async () => {
-  await evaluate(`(() => {
-    const f = document.querySelector('#fromInput'), t = document.querySelector('#toInput');
-    f.value = 'SEA'; f.dispatchEvent(new Event('input', { bubbles: true }));
-    t.value = 'SNA'; t.dispatchEvent(new Event('input', { bubbles: true }));
-    document.querySelector('#swapBtn').click();
-  })()`);
   const state = await evaluate(`({
-    from: document.querySelector('#fromInput').value.toUpperCase(),
-    to: document.querySelector('#toInput').value.toUpperCase()
+    chips: [...document.querySelectorAll('#fromChips .apt-chip')].map(c => c.firstChild.textContent),
+    box: document.querySelector('#fromInput').value.toUpperCase()
   })`);
-  assert.strictEqual(state.from, 'SNA');
-  assert.strictEqual(state.to, 'SEA');
+  assert.deepStrictEqual(state.chips, ['SEA'], 'the chip comes off');
+  assert.strictEqual(state.box, 'PDX', 'and lands back in the box, not the bin');
+});
+
+test('an unknown code waits for Enter instead of being taken silently', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('zzz');
+
+  let state = await evaluate(`({
+    chips: [...document.querySelectorAll('#fromChips .apt-chip')].map(c => c.firstChild.textContent),
+    box: document.querySelector('#fromInput').value.toUpperCase(),
+    hint: document.querySelector('#fromHint').textContent
+  })`);
+  assert.deepStrictEqual(state.chips, [], 'nothing is committed on its own');
+  assert.strictEqual(state.box, 'ZZZ', 'so the typo is still there to fix');
+  assert.match(state.hint, /Not in the airport list/);
+});
+
+test('the swap button exchanges whole selections, not just the boxes', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
+  await evaluate(`document.querySelector('#toInput').focus()`);
+  await typeText('sna');
+  await evaluate(`document.querySelector('#swapBtn').click()`);
+
+  assert.deepStrictEqual(await chipsOn('from'), ['SNA']);
+  assert.deepStrictEqual(await chipsOn('to'), ['SEA', 'PDX'],
+    'swapping one code and dropping the rest was the bug worth guarding');
+});
+
+test('what a multi-airport search will cost is stated before it is spent', maybe, async () => {
+  await clearSides();
+  await evaluate(`(() => {
+    const live = [...document.querySelectorAll('input[name=fareSource]')].find(r => r.value === 'live');
+    live.checked = true;
+    live.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('#fromInput').focus();
+  })()`);
+  await typeText('sea');
+  await typeText('pdx');
+  await evaluate(`document.querySelector('#toInput').focus()`);
+  await typeText('lhr');
+  await typeText('cdg');
+
+  const note = await evaluate(`({
+    hidden: document.querySelector('#comboCost').hidden,
+    text: document.querySelector('#comboCost').textContent
+  })`);
+  assert.strictEqual(note.hidden, false);
+  assert.match(note.text, /4 airport pairs/, 'two origins against two destinations');
+  assert.match(note.text, /4 lookups/, 'and it says what that costs, before spending it');
+});
+
+test('getting to the airport is asked about once a code is picked', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+
+  const ground = await evaluate(`({
+    hidden: document.querySelector('#groundField').hidden,
+    codes: [...document.querySelectorAll('#groundRows .gr-code')].map(e => e.textContent),
+    hasDrive: !!document.querySelector('#gr-origin-SEA-driveMinutes'),
+    hasParking: !!document.querySelector('#gr-origin-SEA-parking')
+  })`);
+  assert.strictEqual(ground.hidden, false);
+  assert.deepStrictEqual(ground.codes, ['SEA']);
+  assert.ok(ground.hasDrive && ground.hasParking, 'both figures the origin end needs');
 });
 
 /* The other regression: the Google Flights href only refreshed when the
@@ -290,6 +349,14 @@ test('the Google Flights link tracks every field that feeds it', maybe, async ()
   const dates = await evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -327,6 +394,14 @@ test('a full search renders ranked results', maybe, async () => {
   const result = await evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -382,6 +457,14 @@ test('pasting flight results produces pickable offers and prices them', maybe, a
   const r = await evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -481,6 +564,14 @@ test('results built on simulated card bonuses say so loudly', maybe, async () =>
   const r = await evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -543,6 +634,14 @@ async function pasteBaggedFares() {
   return evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -678,6 +777,14 @@ async function liveRoundTripSearch() {
 
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -798,6 +905,14 @@ test('every row shows when it leaves and lands, without being opened', maybe, as
     ]);
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -882,6 +997,14 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
   await evaluate(`(() => {
     const set = (sel, v) => {
       const el = document.querySelector(sel);
+      /* An airport box now feeds a chip list, and every one of these tests
+       * means "the route IS this". Clear that side first, or codes from an
+       * earlier test pile up and quietly turn a single search into a
+       * multi-airport one, complete with a confirm dialog. */
+      if (sel === '#fromInput' || sel === '#toInput') {
+        const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+        document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+      }
       el.value = v;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -927,96 +1050,4 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
   const back = await readRanked();
   assert.deepStrictEqual([...back.map((r) => r.program)], [...byValue.map((r) => r.program)],
     'and it is reversible');
-});
-
-/* Pasting a rewards page is the closest thing to automatic that exists without
- * a backend or somebody's airline password. It must never overwrite silently. */
-test('pasting a rewards page previews balances before changing anything', maybe, async () => {
-  const r = await evaluate(`(() => {
-    // Earlier tests may leave a modelled card bonus on; the chip counts those.
-    document.querySelectorAll('#cardList .cc.is-on input').forEach(i => i.click());
-    [...document.querySelectorAll('.tab')].find(t => t.dataset.tab === 'balances').click();
-    document.querySelectorAll('.balance-row input').forEach(el => {
-      if (el.value) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
-    });
-    const mr = document.querySelector('#bal-MR');
-    mr.value = 1000;
-    mr.dispatchEvent(new Event('input', { bubbles: true }));
-
-    const box = document.querySelector('#balancePaste');
-    box.value = [
-      'Membership Rewards', '125,430 points',
-      'Mileage Plan', '61,900 miles',
-      'Aeroplan', '24,000'
-    ].join(String.fromCharCode(10));
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-
-    return {
-      rows: [...document.querySelectorAll('#balancePreview .bp-row')].map(r => ({
-        name: r.querySelector('.bp-name').textContent,
-        value: r.querySelector('.bp-value').textContent,
-        was: r.querySelector('.bp-was').textContent
-      })),
-      applyShown: !document.querySelector('#applyBalances').hidden,
-      mrStillOld: document.querySelector('#bal-MR').value
-    };
-  })()`);
-
-  assert.strictEqual(r.rows.length, 3, 'all three balances read out of one paste');
-  assert.strictEqual(r.rows[0].name, 'Amex MR', 'largest first');
-  assert.strictEqual(r.rows[0].value, '125,430');
-  assert.match(r.rows[0].was, /was 1,000/, 'it must show what it would overwrite');
-  assert.ok(r.applyShown);
-  assert.strictEqual(r.mrStillOld, '1000', 'and change nothing until asked');
-});
-
-test('applying the paste fills the balances and dates them', maybe, async () => {
-  const r = await evaluate(`(() => {
-    document.querySelector('#applyBalances').click();
-    const ageOf = (id) => {
-      const row = document.querySelector('#bal-' + id).closest('.balance-row');
-      const age = row.querySelector('.age');
-      return age ? age.textContent : '';
-    };
-    return {
-      mr: document.querySelector('#bal-MR').value,
-      as: document.querySelector('#bal-AS').value,
-      ac: document.querySelector('#bal-AC').value,
-      age: ageOf('MR'),
-      stale: !!document.querySelector('#bal-MR').closest('.balance-row').querySelector('.age.is-stale'),
-      status: document.querySelector('#balancePasteStatus').textContent,
-      boxCleared: document.querySelector('#balancePaste').value === '',
-      // "Points you hold" is the real total, independent of any card bonus
-      // being modelled — which the chip deliberately includes.
-      held: document.querySelector('#balanceSummary dd').textContent
-    };
-  })()`);
-
-  assert.strictEqual(r.mr, '125430');
-  assert.strictEqual(r.as, '61900');
-  assert.strictEqual(r.ac, '24000');
-  assert.match(r.status, /Updated 3 balances/);
-  assert.ok(r.boxCleared, 'the box empties so a stale paste cannot be reapplied');
-  assert.strictEqual(r.age, 'updated today', 'a balance records when it was set');
-  assert.strictEqual(r.stale, false, 'and a fresh one is not flagged');
-  assert.strictEqual(r.held, '211,330', 'the three balances land as the real total');
-});
-
-test('an unrecognised paste says so and touches nothing', maybe, async () => {
-  const r = await evaluate(`(() => {
-    const before = document.querySelector('#bal-MR').value;
-    const box = document.querySelector('#balancePaste');
-    box.value = 'Your order #4821 shipped on 2026-08-25 for $1,240.00';
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-    return {
-      status: document.querySelector('#balancePasteStatus').textContent,
-      previewHidden: document.querySelector('#balancePreview').hidden,
-      applyHidden: document.querySelector('#applyBalances').hidden,
-      unchanged: document.querySelector('#bal-MR').value === before
-    };
-  })()`);
-
-  assert.match(r.status, /No balances recognised/i);
-  assert.ok(r.previewHidden && r.applyHidden, 'nothing to apply, so nothing offered');
-  assert.ok(r.unchanged);
 });

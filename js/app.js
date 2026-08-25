@@ -7,6 +7,10 @@
 
   var state, lastResult = null, lastQuery = null, liveOffers = [], selectedOfferId = null;
   var pickedAirlines = [];   // carrier codes toggled on via the chip buttons
+  /* Airports selected on each side. Several are allowed: the app searches
+   * every origin against every destination and ranks them on what the whole
+   * trip costs, driving included. */
+  var pickedFrom = [], pickedTo = [];
 
   /* Ways home for each outbound, keyed by offer id:
    *   { loading, error, options, selectedId }
@@ -36,6 +40,8 @@
     bindIosInstallNotice();
 
     restoreSearchForm();
+    renderAirportChips();
+    renderGroundRows();
     renderBalances();
     renderCards();
     renderCardSimSummary();
@@ -83,75 +89,23 @@
     var form = $('#searchForm');
 
     $('#swapBtn').addEventListener('click', function () {
-      var f = $('#fromInput').value;
+      // Swap the whole selection, not one code: with several airports a side,
+      // swapping only what happens to be in the input boxes loses the rest.
+      var f = pickedFrom;
+      pickedFrom = pickedTo;
+      pickedTo = f;
+      var typed = $('#fromInput').value;
       $('#fromInput').value = $('#toInput').value;
-      $('#toInput').value = f;
-      updateAirportHints();
-      persistSearchForm();
+      $('#toInput').value = typed;
+      afterAirportChange();
     });
 
-    /* Airport code fields.
-     *
-     * Do NOT rewrite `this.value` on every keystroke. Uppercasing and
-     * truncating in the input handler silently discarded any character typed
-     * into an already-full field and yanked the caret to the end, which made
-     * the field look frozen once a code was in it. `maxlength="3"` plus a CSS
-     * text-transform gets the same result natively, with correct caret and
-     * selection behaviour. readForm() uppercases the value for the engine. */
-    ['#fromInput', '#toInput'].forEach(function (sel) {
-      var el = $(sel);
-
-      el.addEventListener('input', function () {
-        updateAirportHints();
-        persistSearchForm();
-      });
-
-      /* Normalise to uppercase once editing is done, so what's stored and
-       * restored matches what's displayed. */
-      el.addEventListener('change', function () {
-        this.value = this.value.toUpperCase();
-        updateAirportHints();
-        persistSearchForm();
-      });
-
-      /* A three-letter code field must never feel stuck. The FIRST printable
-       * keystroke after arriving in a full field replaces the whole code
-       * instead of being silently dropped by maxlength — that's what makes a
-       * restored "SEA" retypable as "SFO".
-       *
-       * Only the first one, though: within a typing burst, maxlength should
-       * truncate normally so "seattle" still yields SEA rather than rolling
-       * over to the last three characters. Backspace and modifier combos are
-       * untouched, so partial edits keep working. */
-      var replaceOnNextKey = false;
-
-      el.addEventListener('keydown', function (e) {
-        if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
-        if (replaceOnNextKey && this.value.length >= 3 &&
-            this.selectionStart === this.selectionEnd) {
-          this.select();
-        }
-        replaceOnNextKey = false;
-      });
-
-      /* Select the existing code on focus so typing replaces it — the field
-       * is three characters, nobody wants to edit it in place. */
-      var selectOnRelease = false;
-      el.addEventListener('mousedown', function () {
-        selectOnRelease = document.activeElement !== this;
-      });
-      el.addEventListener('mouseup', function (e) {
-        if (!selectOnRelease) return;
-        selectOnRelease = false;
-        e.preventDefault();   // stop the click from collapsing the selection
-        this.select();
-        replaceOnNextKey = true;
-      });
-      el.addEventListener('focus', function () {
-        this.select();
-        replaceOnNextKey = true;
-      });
-    });
+    /* Airport code fields. Both sides accept several codes; see
+     * bindAirportField() for how one gets committed. The old select-on-focus
+     * and replace-on-next-key handling is gone with the single-value field -
+     * the box is empty after every chip, so there is nothing to retype over. */
+    bindAirportField('from');
+    bindAirportField('to');
 
     $('#roundTripInput').addEventListener('change', function () {
       $('#returnField').style.opacity = this.checked ? '1' : '.45';
@@ -260,8 +214,9 @@
   }
 
   function updateAirportHints() {
-    [['#fromInput', '#fromHint'], ['#toInput', '#toHint']].forEach(function (pair) {
+    [['#fromInput', '#fromHint', 'from'], ['#toInput', '#toHint', 'to']].forEach(function (pair) {
       var code = $(pair[0]).value.toUpperCase();
+      var chosen = sideList(pair[2]);
       var a = PB.airports[code];
       var hint = $(pair[1]);
       if (a) {
@@ -270,11 +225,16 @@
       } else if (code.length === 3) {
         hint.textContent = 'Not in the airport list — add it to data/airports.js';
         hint.classList.add('warn');
+      } else if (chosen.length) {
+        hint.textContent = chosen.length + (chosen.length === 1 ? ' airport' : ' airports') +
+          ' selected';
+        hint.classList.remove('warn');
       } else {
         hint.textContent = '';
         hint.classList.remove('warn');
       }
     });
+    updateComboNote();
     refreshExternalLinks();
   }
 
@@ -301,8 +261,13 @@
 
   function readForm() {
     return {
-      from: $('#fromInput').value.toUpperCase(),
-      to: $('#toInput').value.toUpperCase(),
+      /* Both sides, and the first of each. Everything downstream of a single
+       * route - the estimator, the Google Flights link, the points engine -
+       * reads from/to and is unaffected by there being more than one. */
+      origins: airportsOn('from'),
+      destinations: airportsOn('to'),
+      from: airportsOn('from')[0] || '',
+      to: airportsOn('to')[0] || '',
       date: $('#dateInput').value,
       returnDate: $('#returnInput').value,
       cabin: $('#cabinInput').value,
@@ -444,8 +409,9 @@
 
   function restoreSearchForm() {
     var s = state.lastSearch || {};
-    if (s.from) $('#fromInput').value = s.from;
-    if (s.to) $('#toInput').value = s.to;
+    /* Saved state may predate multi-select, when from/to were single codes. */
+    pickedFrom = (s.origins && s.origins.length) ? s.origins.slice() : (s.from ? [s.from] : []);
+    pickedTo   = (s.destinations && s.destinations.length) ? s.destinations.slice() : (s.to ? [s.to] : []);
     if (s.date) $('#dateInput').value = s.date;
     if (s.returnDate) $('#returnInput').value = s.returnDate;
     if (s.cabin) $('#cabinInput').value = s.cabin;
@@ -495,12 +461,23 @@
     lastQuery = q;
     persistSearchForm();
 
-    if (!PB.airports[q.from] || !PB.airports[q.to]) {
-      setStatus('Unknown airport code. Use a 3-letter IATA code that exists in <code>data/airports.js</code>.', 'err');
+    if (!q.origins.length || !q.destinations.length) {
+      setStatus('Pick at least one airport on each side.', 'err');
       return;
     }
-    if (q.from === q.to) {
-      setStatus('Origin and destination are the same.', 'err');
+
+    var unknown = q.origins.concat(q.destinations).filter(function (c) { return !PB.airports[c]; });
+    if (unknown.length) {
+      setStatus('Not in the airport list: <code>' + esc(unknown.join(', ')) +
+        '</code>. Use 3-letter IATA codes that exist in <code>data/airports.js</code>.', 'err');
+      return;
+    }
+
+    /* Every origin against every destination. Same-airport pairs are dropped
+     * inside combos(), so an overlapping selection is not an error. */
+    var combos = PB.drive.combos(q.origins, q.destinations);
+    if (!combos.length) {
+      setStatus('Those selections only pair an airport with itself.', 'err');
       return;
     }
 
@@ -513,6 +490,11 @@
         setStatus('Live search needs a departure date.', 'err');
         return;
       }
+      /* More than one pair is a different job: sequential, interruptible,
+       * and ranked on the whole trip rather than the fare. */
+      if (combos.length > 1) { runComboSearch(q, combos); return; }
+
+      $('#comboWrap').hidden = true;
       setStatus('Searching live fares…', 'busy');
       $('#offersWrap').hidden = true;
       PB.flights.searchLive(q, state.settings).then(function (offers) {
@@ -1270,68 +1252,6 @@
       updateBalanceChip();
     });
 
-    /* Read as you paste, but do NOT write anything yet. Overwriting balances
-     * the moment text lands in a box would be a data-loss bug waiting for a
-     * stray paste: the numbers are shown first and applied on request. */
-    var pending = [];
-    $('#balancePaste').addEventListener('input', function () {
-      var read = PB.parseBalances(this.value);
-      pending = read.found;
-      renderBalancePreview(read, this.value);
-    });
-
-    $('#applyBalances').addEventListener('click', function () {
-      pending.forEach(function (b) { PB.store.setBalance(b.id, b.value); });
-      state = PB.store.state;
-      $('#balancePaste').value = '';
-      $('#balancePreview').hidden = true;
-      this.hidden = true;
-      $('#balancePasteStatus').textContent =
-        'Updated ' + pending.length + ' balance' + (pending.length > 1 ? 's' : '') + '.';
-      pending = [];
-      renderBalances();
-      updateBalanceChip();
-    });
-  }
-
-  function renderBalancePreview(read, raw) {
-    var box = $('#balancePreview');
-    var status = $('#balancePasteStatus');
-    var apply = $('#applyBalances');
-
-    if (!raw.trim()) {
-      box.hidden = true; apply.hidden = true; status.textContent = '';
-      return;
-    }
-
-    if (!read.found.length) {
-      box.hidden = true;
-      apply.hidden = true;
-      status.textContent = read.unmatched.length
-        ? 'Found ' + read.unmatched.join(', ') + ' but no balance next to it. Copy the part of the page showing the number.'
-        : 'No balances recognised in that text. Copy the page that lists your points.';
-      return;
-    }
-
-    /* Show what it will do before it does it, including what it is about to
-     * overwrite - a balance replaced by a bad parse is silent data loss. */
-    box.hidden = false;
-    box.innerHTML = read.found.map(function (b) {
-      var was = state.balances[b.id];
-      return '<div class="bp-row">' +
-        '<span class="bp-name">' + esc(b.name) + '</span>' +
-        '<span class="bp-value">' + PB.fmt.miles(b.value) + '</span>' +
-        '<span class="bp-was">' +
-          (was == null ? 'new'
-           : was === b.value ? 'unchanged'
-           : 'was ' + PB.fmt.miles(was)) +
-        '</span></div>';
-    }).join('');
-
-    apply.hidden = false;
-    status.textContent = read.unmatched.length
-      ? 'Could not find a number for ' + read.unmatched.join(', ') + '.'
-      : '';
   }
 
   function renderBalances() {
@@ -1533,11 +1453,31 @@
   /* ═══════════════════════ Settings tab ═══════════════════════ */
 
   function bindSettings() {
+    /* Rates that decide whether a longer drive is worth it. Changing one
+     * re-ranks whatever comparison is on screen, since a different value on
+     * an hour of driving can change which airport wins. */
+    [['#drivePerHour', 'perHour'], ['#drivePerMile', 'perMile']].forEach(function (pair) {
+      var el = $(pair[0]);
+      if (!el) return;
+      var current = PB.drive.rates(state.settings)[pair[1]];
+      if (current != null) el.value = current;
+      el.addEventListener('input', function () {
+        var patch = {};
+        var n = parseFloat(this.value);
+        // A blank or nonsense box falls back to the default, never to zero.
+        patch[pair[1]] = (isFinite(n) && n >= 0) ? n : PB.drive.DEFAULTS[pair[1]];
+        PB.store.patch({ settings: { drive: patch } });
+        renderGroundSummary();
+        if (comboRows.length) renderComboResults();
+      });
+    });
+
     var proxy = $('#proxyInput');
     proxy.value = state.settings.proxyUrl || '';
     proxy.addEventListener('change', function () {
       PB.store.patch({ settings: { proxyUrl: this.value.trim() } });
       applyFareSource(readForm().fareSource);
+      updateComboNote();
     });
 
     /* Say plainly that there is nothing to do here, so nobody goes hunting for
@@ -1589,7 +1529,7 @@
       try {
         state = PB.store.importJSON(area.value);
         renderBalances(); renderCards(); renderCardSimSummary();
-        updateBalanceChip(); restoreSearchForm();
+        updateBalanceChip(); restoreSearchForm(); renderAirportChips(); renderGroundRows(); renderAirportChips(); renderGroundRows();
         area.hidden = true;
         alert('Backup restored.');
       } catch (e) {
@@ -1655,6 +1595,438 @@
     });
 
     window.addEventListener('appinstalled', function () { btn.hidden = true; });
+  }
+
+
+
+  /* ── Several airports on each side ────────────────────────────
+   *
+   * The chips are the truth; the input box is only how one gets added. A
+   * three-letter code naming a real airport is committed the moment it is
+   * complete — IATA codes are always exactly three characters, so there is
+   * nothing to wait for and no Enter to remember. Anything else waits for
+   * Enter, a comma, or leaving the field, so a typo can still be fixed.
+   */
+
+  function sideList(which) { return which === 'from' ? pickedFrom : pickedTo; }
+  function sideInput(which) { return $(which === 'from' ? '#fromInput' : '#toInput'); }
+
+  function addAirport(which, code) {
+    code = String(code || '').toUpperCase().trim();
+    if (!/^[A-Z]{3}$/.test(code)) return false;
+    var list = sideList(which);
+    // Already selected is not an error, just nothing to do.
+    if (list.indexOf(code) === -1) list.push(code);
+    return true;
+  }
+
+  /** Chips plus whatever is still being typed, if that is already a whole
+   *  code. Without this, pressing Search with "DEN" sitting uncommitted in the
+   *  box would silently search without it. */
+  function airportsOn(which) {
+    var list = sideList(which).slice();
+    var typed = sideInput(which).value.toUpperCase().trim();
+    if (/^[A-Z]{3}$/.test(typed) && list.indexOf(typed) === -1) list.push(typed);
+    return list;
+  }
+
+  function afterAirportChange() {
+    renderAirportChips();
+    renderGroundRows();
+    updateAirportHints();
+    persistSearchForm();
+  }
+
+  function renderAirportChips() {
+    [['from', '#fromChips'], ['to', '#toChips']].forEach(function (pair) {
+      var which = pair[0];
+      var host = $(pair[1]);
+      if (!host) return;
+      host.innerHTML = '';
+
+      sideList(which).forEach(function (code) {
+        var known = PB.airports[code];
+        var chip = document.createElement('span');
+        chip.className = 'apt-chip' + (known ? '' : ' is-unknown');
+        chip.title = known ? known.city + ', ' + known.country
+                           : code + ' is not in data/airports.js';
+        chip.appendChild(document.createTextNode(code));
+
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '×';
+        x.setAttribute('aria-label', 'Remove ' + code);
+        x.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var list = sideList(which);
+          var i = list.indexOf(code);
+          if (i !== -1) list.splice(i, 1);
+          afterAirportChange();
+        });
+        chip.appendChild(x);
+        host.appendChild(chip);
+      });
+    });
+    updateComboNote();
+  }
+
+  function bindAirportField(which) {
+    var el = sideInput(which);
+    var box = $(which === 'from' ? '#fromMulti' : '#toMulti');
+
+    // The box reads as one field, so clicking its empty part focuses the input.
+    if (box) {
+      box.addEventListener('click', function (e) {
+        if (e.target === box || e.target.classList.contains('multi-chips')) el.focus();
+      });
+    }
+
+    function commit() {
+      if (addAirport(which, el.value)) { el.value = ''; afterAirportChange(); return true; }
+      return false;
+    }
+
+    el.addEventListener('input', function () {
+      var v = this.value.toUpperCase().trim();
+      // A complete code for an airport we know: take it now.
+      if (/^[A-Z]{3}$/.test(v) && PB.airports[v]) { commit(); return; }
+      updateAirportHints();
+    });
+
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        // Enter on an empty box should submit the form, not be swallowed.
+        if (this.value.trim()) commit();
+        else $('#searchForm').requestSubmit();
+        return;
+      }
+      // Backspace in an empty box pulls the last chip back for editing.
+      if (e.key === 'Backspace' && !this.value) {
+        var list = sideList(which);
+        if (list.length) {
+          /* Stop the browser deleting a character as well: without this the
+           * recovered code arrives one letter short, PDX as PD. */
+          e.preventDefault();
+          this.value = list.pop();
+          afterAirportChange();
+        }
+      }
+    });
+
+    el.addEventListener('blur', function () { if (this.value.trim()) commit(); });
+  }
+
+  /** How many searches the current selection would cost, said plainly and
+   *  before any of it is spent. */
+  function updateComboNote() {
+    var el = $('#comboCost');
+    if (!el) return;
+    var combos = PB.drive.combos(airportsOn('from'), airportsOn('to'));
+    var live = ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value === 'live';
+
+    if (combos.length > 1 && live) {
+      el.hidden = false;
+      el.innerHTML = '<b>' + combos.length + ' airport pairs.</b> A live search costs <b>' +
+        combos.length + ' lookups</b> of the shared monthly allowance — they run one ' +
+        'at a time, results appear as they arrive, and you can stop early.';
+    } else if (combos.length > 1) {
+      el.hidden = false;
+      el.innerHTML = '<b>' + combos.length + ' airport pairs selected.</b> Comparing them ' +
+        'needs <b>Live search</b> above; the other price sources only handle one route.';
+    } else {
+      el.hidden = true;
+    }
+  }
+
+  /* ── What each airport costs before the fare ──────────────────── */
+
+  function groundEntry(which, code) {
+    var side = (state.ground && state.ground[which]) || {};
+    return side[code] || {};
+  }
+
+  function setGround(which, code, field, value) {
+    if (!state.ground) state.ground = { origin: {}, destination: {} };
+    if (!state.ground[which]) state.ground[which] = {};
+    if (!state.ground[which][code]) state.ground[which][code] = {};
+    var n = parseFloat(value);
+    if (!isFinite(n) || n < 0) delete state.ground[which][code][field];
+    else state.ground[which][code][field] = n;
+    PB.store.patch({ ground: state.ground });
+  }
+
+  function groundRow(which, code, fields) {
+    var row = document.createElement('div');
+    row.className = 'ground-row';
+
+    var label = document.createElement('span');
+    label.className = 'gr-code';
+    label.textContent = code;
+    var known = PB.airports[code];
+    if (known) label.title = known.city + ', ' + known.country;
+    row.appendChild(label);
+
+    fields.forEach(function (f) {
+      var wrap = document.createElement('label');
+      var cap = document.createElement('span');
+      cap.textContent = f.label;
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.step = '1';
+      input.placeholder = f.placeholder || '0';
+      input.id = 'gr-' + which + '-' + code + '-' + f.key;
+      var existing = groundEntry(which, code)[f.key];
+      if (existing != null) input.value = existing;
+
+      input.addEventListener('input', function () {
+        setGround(which, code, f.key, this.value);
+        renderGroundSummary();
+        // Re-rank live: changing a parking charge can change the winner.
+        if (comboRows.length) renderComboResults();
+      });
+      wrap.appendChild(cap);
+      wrap.appendChild(input);
+      row.appendChild(wrap);
+    });
+    return row;
+  }
+
+  function renderGroundRows() {
+    var host = $('#groundRows');
+    var field = $('#groundField');
+    if (!host || !field) return;
+
+    var origins = airportsOn('from');
+    var dests = airportsOn('to');
+    host.innerHTML = '';
+
+    if (!origins.length && !dests.length) { field.hidden = true; return; }
+    field.hidden = false;
+
+    function section(title, which, codes, fields) {
+      if (!codes.length) return;
+      var h = document.createElement('p');
+      h.className = 'ground-head';
+      h.textContent = title;
+      host.appendChild(h);
+      codes.forEach(function (c) { host.appendChild(groundRow(which, c, fields)); });
+    }
+
+    section('Driving to', 'origin', origins, [
+      { key: 'driveMinutes', label: 'Drive (min, each way)', placeholder: '45' },
+      { key: 'parking', label: 'Parking, whole trip ($)', placeholder: '80' }
+    ]);
+    section('Getting from', 'destination', dests, [
+      { key: 'driveMinutes', label: 'To where you are going (min)', placeholder: '30' },
+      { key: 'extraCost', label: 'Extra transport ($)', placeholder: '40' }
+    ]);
+
+    renderGroundSummary();
+  }
+
+  function renderGroundSummary() {
+    var rates = $('#groundRates');
+    if (rates) {
+      var r = PB.drive.rates(state.settings);
+      rates.innerHTML = 'Valued at <b>$' + r.perHour + '/hour</b> of driving and <b>$' +
+        r.perMile.toFixed(2) + '/mile</b> for fuel and wear, both changeable in ' +
+        'Settings. Driving is counted in each direction; parking is not.';
+    }
+    var sum = $('#groundSummary');
+    if (!sum) return;
+    var origins = airportsOn('from');
+    var filled = origins.filter(function (c) {
+      var e = groundEntry('origin', c);
+      return e.driveMinutes != null || e.parking != null;
+    });
+    sum.textContent = origins.length
+      ? ' (' + filled.length + ' of ' + origins.length + ' filled in)'
+      : '';
+  }
+
+  /* ── Searching every pair ─────────────────────────────────────── */
+
+  var comboStop = false;
+  var comboRows = [];
+  var comboPicked = null;
+
+  function comboGround(row) {
+    return PB.drive.groundCost(
+      groundEntry('origin', row.from),
+      groundEntry('destination', row.to),
+      state.settings
+    );
+  }
+
+  function rankedCombos() {
+    var priced = comboRows.map(function (row) {
+      var best = PB.flights.cheapest(row.offers);
+      return {
+        from: row.from, to: row.to, error: row.error,
+        fare: best ? best.price : null,
+        offers: row.offers,
+        ground: comboGround(row)
+      };
+    });
+    return PB.drive.markCheapestFare(PB.drive.rank(priced));
+  }
+
+  function renderComboProgress(p) {
+    var host = $('#comboList');
+    if (!host) return;
+    var bar = $('#comboProgress');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'comboProgress';
+      bar.className = 'combo-progress';
+      host.parentNode.insertBefore(bar, host);
+    }
+    var done = p.done ? p.index + 1 : p.index;
+    var pct = Math.round((done / Math.max(1, p.total)) * 100);
+    bar.innerHTML =
+      '<span>' + done + ' of ' + p.total + ' searched</span>' +
+      '<span class="bar"><i style="width:' + pct + '%"></i></span>' +
+      '<button type="button" id="comboStopBtn" class="btn btn-ghost">Stop</button>';
+    $('#comboStopBtn').addEventListener('click', function () {
+      comboStop = true;
+      this.disabled = true;
+      this.textContent = 'Stopping…';
+    });
+  }
+
+  function clearComboProgress(summary) {
+    var bar = $('#comboProgress');
+    if (!bar) return;
+    if (summary && summary.stopped) {
+      bar.innerHTML = '<span>Stopped after ' + summary.searched + ' of ' +
+        summary.planned + '. The rest were never searched, and cost nothing.</span>';
+    } else {
+      bar.remove();
+    }
+  }
+
+  function fmtMins(m) {
+    m = Math.round(m);
+    if (m < 60) return m + 'm';
+    var h = Math.floor(m / 60);
+    var r = m % 60;
+    return r ? h + 'h' + r + 'm' : h + 'h';
+  }
+
+  function renderComboResults() {
+    var host = $('#comboList');
+    if (!host) return;
+    var ranked = rankedCombos();
+    host.innerHTML = '';
+
+    if (!ranked.length && !comboRows.length) {
+      host.innerHTML = '<p class="hint">No fares yet.</p>';
+      return;
+    }
+
+    ranked.forEach(function (r) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'combo' + (r.rank === 1 ? ' is-best' : '') +
+                    (comboPicked === r.from + r.to ? ' is-picked' : '');
+
+      var tags = '';
+      if (r.rank === 1) tags += '<span class="combo-tag best">Best trip</span>';
+      /* The entire reason this feature exists: the cheapest ticket lost once
+       * getting to its airport was priced. Say it outright rather than leaving
+       * it to be inferred from two numbers. */
+      if (r.cheapestFare && r.rank !== 1) {
+        tags += '<span class="combo-tag fare">Cheapest fare, costlier trip</span>';
+      }
+
+      var g = r.ground;
+      var parts = ['fare $' + Math.round(r.fare)];
+      if (g.origin.minutes) parts.push('drive ' + fmtMins(g.origin.minutes) + ' each way');
+      if (g.origin.parking) parts.push('park $' + Math.round(g.origin.parking));
+      if (g.origin.fuel) parts.push('gas $' + Math.round(g.origin.fuel));
+      if (g.destination.total) parts.push('far end $' + Math.round(g.destination.total));
+
+      b.innerHTML =
+        '<span class="combo-top">' +
+          '<span class="combo-route">' + esc(r.from) + ' → ' + esc(r.to) + '</span>' +
+          tags +
+          '<span class="combo-allin">$' + Math.round(r.allIn) + '</span>' +
+        '</span>' +
+        '<span class="combo-parts">' + esc(parts.join(' · ')) +
+          (r.overBest > 0 ? '  —  $' + Math.round(r.overBest) + ' more than the best' : '') +
+        '</span>';
+
+      b.addEventListener('click', function () {
+        comboPicked = r.from + r.to;
+        pickCombo(r);
+      });
+      host.appendChild(b);
+    });
+
+    // A pair that came back empty is worth saying, not quietly dropping.
+    comboRows.filter(function (row) {
+      return row.error || !PB.flights.cheapest(row.offers);
+    }).forEach(function (row) {
+      var p = document.createElement('p');
+      p.className = 'combo-err';
+      p.textContent = row.from + ' → ' + row.to + ': ' +
+        (row.error ? row.error : 'no fares came back');
+      host.appendChild(p);
+    });
+  }
+
+  /** Load one pair's flights into the existing single-route machinery, so the
+   *  points comparison below needs to know nothing about any of this. */
+  function pickCombo(r) {
+    liveOffers = r.offers;
+    returnsByOffer = {};
+    selectedOfferId = null;
+    lastQuery = Object.assign({}, readForm(), { from: r.from, to: r.to });
+    renderComboResults();
+    applyOfferFilters();
+    var wrap = $('#offersWrap');
+    if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function runComboSearch(q, combos) {
+    var ok = window.confirm(
+      combos.length + ' airport pairs will be searched, one at a time.\n\n' +
+      'That is ' + combos.length + ' lookups against the shared monthly allowance. ' +
+      'Results appear as they arrive and you can stop early.\n\nGo ahead?');
+    if (!ok) { setStatus(''); return; }
+
+    comboStop = false;
+    comboRows = [];
+    comboPicked = null;
+    $('#comboWrap').hidden = false;
+    $('#offersWrap').hidden = true;
+    $('#results').innerHTML = '';
+    setStatus('Searching ' + combos.length + ' airport pairs…', 'busy');
+
+    PB.flights.searchCombos(q, state.settings, combos, {
+      shouldStop: function () { return comboStop; },
+      onProgress: renderComboProgress,
+      onResult: function (row, all) {
+        comboRows = all;
+        renderComboResults();
+      }
+    }).then(function (summary) {
+      clearComboProgress(summary);
+      var withFares = comboRows.filter(function (r) { return PB.flights.cheapest(r.offers); });
+      if (!withFares.length) {
+        setStatus('None of those pairs came back with a fare. Try other dates, or enter ' +
+                  'a price yourself.', 'err');
+        return;
+      }
+      setStatus('');
+      renderComboResults();
+    }).catch(function (err) {
+      clearComboProgress(null);
+      setStatus('Multi-airport search failed: ' + esc(err.message), 'err');
+    });
   }
 
   document.addEventListener('DOMContentLoaded', init);

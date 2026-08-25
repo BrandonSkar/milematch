@@ -499,4 +499,53 @@ window.PB = window.PB || {};
     return links;
   };
 
+
+  /* Several airport pairs, searched one at a time.
+   *
+   * Deliberately sequential. Nine searches fired at once spend nine lookups
+   * before the first result reaches the screen, and both SerpApi hourly cap
+   * and the worker own per-IP limit would rather they queued. Each result is
+   * handed back as it lands so the run can be stopped the moment the answer is
+   * obvious - which is the difference between this feature costing two
+   * searches and costing nine.
+   *
+   * One pair failing does not stop the rest: an unserved route should not cost
+   * you the results you have already paid for.
+   */
+  PB.flights.searchCombos = function (q, settings, combos, handlers) {
+    var h = handlers || {};
+    var list = combos || [];
+    var results = [];
+    var stopped = false;
+
+    return list.reduce(function (chain, pair, i) {
+      return chain.then(function () {
+        if (stopped || (h.shouldStop && h.shouldStop())) { stopped = true; return null; }
+        if (h.onProgress) h.onProgress({ index: i, total: list.length, pair: pair, done: false });
+
+        var one = Object.assign({}, q, { from: pair.from, to: pair.to });
+        return PB.flights.searchLive(one, settings).then(function (offers) {
+          return { from: pair.from, to: pair.to, offers: offers || [], error: null };
+        }).catch(function (err) {
+          return { from: pair.from, to: pair.to, offers: [], error: err.message || String(err) };
+        }).then(function (row) {
+          results.push(row);
+          if (h.onResult) h.onResult(row, results);
+          if (h.onProgress) h.onProgress({ index: i, total: list.length, pair: pair, done: true });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      return { results: results, stopped: stopped, searched: results.length, planned: list.length };
+    });
+  };
+
+  /** The cheapest offer in a set, or null when nothing usable came back. */
+  PB.flights.cheapest = function (offers) {
+    var best = null;
+    (offers || []).forEach(function (o) {
+      if (o && isFinite(o.price) && o.price > 0 && (!best || o.price < best.price)) best = o;
+    });
+    return best;
+  };
+
 })(window.PB);

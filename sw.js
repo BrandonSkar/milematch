@@ -5,7 +5,7 @@
  *
  * Bump CACHE when you change any cached file, or the old copy will stick around.
  */
-const CACHE = 'milematch-v23';
+const CACHE = 'milematch-v24';
 
 const ASSETS = [
   './',
@@ -13,6 +13,7 @@ const ASSETS = [
   './css/styles.css',
   './js/engine.js',
   './js/flights.js',
+  './js/drive.js',
   './js/balances.js',
   './js/store.js',
   './js/app.js',

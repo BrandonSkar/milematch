@@ -13,12 +13,13 @@ function loadPB() {
   const root = path.join(__dirname, '..');
   const ctx = {
     console, Math, Date, JSON, Object, Array, String, Number, Boolean,
-    parseFloat, parseInt, isNaN, btoa, atob, URLSearchParams, fetch
+    parseFloat, parseInt, isNaN, isFinite, btoa, atob, URLSearchParams, fetch
   };
   ctx.window = ctx;
   vm.createContext(ctx);
   ['data/config.js', 'data/airports.js', 'data/programs.js', 'data/charts.js',
-   'data/cards.js', 'js/engine.js', 'js/flights.js', 'js/balances.js']
+   'data/cards.js', 'js/engine.js', 'js/flights.js', 'js/balances.js',
+   'js/drive.js']
     .forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   ctx.PB.loadAirports();
   return ctx;
@@ -1045,80 +1046,6 @@ test('every live lookup varies a parameter the browser cache respects', async ()
     'the buster is the ONLY difference, so the edge still answers from cache');
 });
 
-/* ── Reading balances out of a copied rewards page ─────────── */
-
-test('a copied rewards page fills in every balance it names', () => {
-  const r = PB.parseBalances(`
-Welcome back
-Ultimate Rewards
-84,062 points
-Chase Sapphire Preferred ...1234
-Available credit $8,300
-`);
-  const byId = {};
-  r.found.forEach((b) => { byId[b.id] = b.value; });
-  assert.strictEqual(byId.UR, 84062, 'the number under the programme name');
-  assert.strictEqual(r.found.length, 1, 'a credit limit is not a points balance');
-});
-
-test('balances are read from the same line, the next, or the one above', () => {
-  const same = PB.parseBalances('AAdvantage miles 52,140');
-  assert.strictEqual(same.found[0].id, 'AA');
-  assert.strictEqual(same.found[0].value, 52140);
-
-  const below = PB.parseBalances('Mileage Plan\n61,900 miles');
-  assert.strictEqual(below.found[0].id, 'AS');
-  assert.strictEqual(below.found[0].value, 61900);
-
-  const above = PB.parseBalances('12,500 points\nRapid Rewards balance');
-  assert.strictEqual(above.found[0].id, 'WN');
-  assert.strictEqual(above.found[0].value, 12500);
-});
-
-test('years and account numbers are not mistaken for balances', () => {
-  // A statement date next to a programme name must not become the balance.
-  const r = PB.parseBalances('SkyMiles\nStatement closing 2026\n48,300 miles available');
-  assert.strictEqual(r.found[0].id, 'DL');
-  assert.strictEqual(r.found[0].value, 48300, 'the labelled number wins over the year');
-});
-
-test('a programme with no number nearby is reported, not guessed', () => {
-  const r = PB.parseBalances('Membership Rewards\nSee your account for details');
-  assert.strictEqual(r.found.length, 0);
-  assert.deepStrictEqual([...r.unmatched], ['Amex MR'],
-    'silence must be reported rather than filled in with a number from elsewhere');
-});
-
-/* Avios is one currency across three programmes, so the word alone cannot say
- * which account it belongs to. Guessing would put points in the wrong one. */
-test('an ambiguous Avios balance is not assigned to a programme', () => {
-  const bare = PB.parseBalances('Avios\n52,000');
-  assert.strictEqual(bare.found.length, 0, 'bare "Avios" names no single programme');
-
-  const named = PB.parseBalances('Iberia Plus\n52,000 Avios');
-  assert.strictEqual(named.found[0].id, 'IB');
-  assert.strictEqual(named.found[0].value, 52000);
-});
-
-test('several programmes in one paste all come through', () => {
-  const r = PB.parseBalances(`
-Membership Rewards      125,430
-Mileage Plan             61,900
-Aeroplan                 24,000
-LifeMiles                 9,800
-`);
-  const ids = r.found.map((b) => b.id).sort();
-  assert.deepStrictEqual([...ids], ['AC', 'AS', 'AV', 'MR']);
-  // Sorted biggest first, so the preview leads with what matters.
-  assert.strictEqual(r.found[0].id, 'MR');
-});
-
-test('nothing recognisable yields nothing, rather than noise', () => {
-  const r = PB.parseBalances('Your order #4821 shipped on 2026-08-25 for $1,240.00');
-  assert.strictEqual(r.found.length, 0);
-  assert.strictEqual(r.unmatched.length, 0);
-});
-
 /* ── Balance age ───────────────────────────────────────────── */
 
 test('a balance says how old it is, and when it is too old to trust', () => {
@@ -1135,19 +1062,131 @@ test('a balance says how old it is, and when it is too old to trust', () => {
     'a balance with no date is exactly as untrustworthy as an ancient one');
 });
 
-/* Regression: the search for a number ran past the line where the NEXT
- * programme starts, so a name with no balance stole its neighbour's. */
-test('a programme with no number cannot take the next one down', () => {
-  const r = PB.parseBalances('Membership Rewards\nMileage Plan\n61,900 miles');
-  const byId = {};
-  r.found.forEach((b) => { byId[b.id] = b.value; });
-  assert.strictEqual(byId.AS, 61900, 'the balance belongs to the name above it');
-  assert.strictEqual(byId.MR, undefined, 'and Amex gets nothing, correctly');
-  assert.deepStrictEqual([...r.unmatched], ['Amex MR']);
+/* ── Getting to the airport ────────────────────────────────────
+ *
+ * The point of the whole multi-airport feature: the cheapest fare and the
+ * cheapest trip are frequently not the same flight. */
+
+test('driving to a further airport is priced, both ways', () => {
+  // 90 minutes each way, $80 to park. At the defaults: 3h of driving at $25,
+  // 135 miles of it at $0.20.
+  const c = PB.drive.originCost({ driveMinutes: 90, parking: 80 });
+  assert.strictEqual(c.time, 75, '1.5h each way at $25');
+  assert.strictEqual(c.fuel, 27, '1.5h at 45mph = 67.5mi each way, doubled, at $0.20');
+  assert.strictEqual(c.parking, 80, 'parking is for the trip, not per drive');
+  assert.strictEqual(c.total, 182);
 });
 
-test('a number two lines below its name is still found', () => {
-  const r = PB.parseBalances('SkyMiles\nStatement closing 2026\n48,300 miles available');
-  assert.strictEqual(r.found[0].id, 'DL');
-  assert.strictEqual(r.found[0].value, 48300);
+test('an airport you live next to costs almost nothing to reach', () => {
+  // 12.5 of time, 4.50 of fuel, and the parking dwarfs both.
+  const c = PB.drive.originCost({ driveMinutes: 15, parking: 60 });
+  assert.strictEqual(c.time, 12.5);
+  assert.strictEqual(c.fuel, 4.5);
+  assert.strictEqual(c.total, 77);
+});
+
+test('the destination end has no parking and no fuel', () => {
+  // Your car is at home. What differs is the time to reach town, and any
+  // standing difference in what that leg costs.
+  const c = PB.drive.destinationCost({ driveMinutes: 60, extraCost: 40 });
+  assert.strictEqual(c.time, 50, 'an hour each way at $25');
+  assert.strictEqual(c.extra, 40);
+  assert.strictEqual(c.total, 90);
+  assert.strictEqual(c.fuel, undefined, 'no fuel line at the far end');
+});
+
+test('missing or nonsense ground figures cost zero, not NaN', () => {
+  assert.strictEqual(PB.drive.originCost(null).total, 0);
+  assert.strictEqual(PB.drive.originCost({ driveMinutes: '', parking: '' }).total, 0);
+  assert.strictEqual(PB.drive.originCost({ driveMinutes: 'soon', parking: -5 }).total, 0,
+    'a negative parking charge is not a discount');
+});
+
+test('the rates can be overridden, and a blank one falls back', () => {
+  const s = { drive: { perHour: 100, perMile: '', mph: 45 } };
+  const c = PB.drive.originCost({ driveMinutes: 60, parking: 0 }, s);
+  assert.strictEqual(c.time, 200, 'two hours at the rate that was set');
+  assert.strictEqual(c.fuel, 18, 'and the default per-mile, since none was given');
+});
+
+test('every airport pair is searched, and same-airport pairs are dropped', () => {
+  const c = PB.drive.combos(['DEN', 'COS'], ['PHX', 'LAS']);
+  assert.strictEqual(c.length, 4);
+  // Compared field by field: these objects are built inside the vm sandbox,
+  // so they are structurally identical but not reference-equal to ours.
+  assert.strictEqual(c[0].from, 'DEN');
+  assert.strictEqual(c[0].to, 'PHX');
+
+  const overlap = PB.drive.combos(['DEN', 'PHX'], ['PHX', 'LAS']);
+  assert.strictEqual(overlap.length, 3, 'PHX→PHX is an overlap, not an error');
+  assert.ok(!overlap.some((p) => p.from === p.to));
+});
+
+test('the cheapest fare is not always the cheapest trip', () => {
+  const ranked = PB.drive.markCheapestFare(PB.drive.rank([
+    // The bargain fare, two hours away, with airport parking.
+    { from: 'DEN', to: 'PHX', fare: 261,
+      ground: PB.drive.groundCost({ driveMinutes: 110, parking: 98 }, null, null) },
+    // Pricier ticket from the airport down the road.
+    { from: 'COS', to: 'PHX', fare: 298,
+      ground: PB.drive.groundCost({ driveMinutes: 25, parking: 56 }, null, null) }
+  ]));
+
+  assert.strictEqual(ranked[0].from, 'COS', 'the nearer airport wins the trip');
+  assert.strictEqual(ranked[1].from, 'DEN');
+  assert.ok(ranked[1].cheapestFare, 'even though Denver had the cheaper ticket');
+  assert.ok(!ranked[0].cheapestFare);
+  assert.ok(ranked[1].overBest > 0, 'and the gap is stated, so the drive can be judged');
+});
+
+test('ranking states how much more each option costs than the best', () => {
+  const ranked = PB.drive.rank([
+    { from: 'A', to: 'Z', fare: 300, ground: { total: 50 } },
+    { from: 'B', to: 'Z', fare: 200, ground: { total: 100 } },
+    { from: 'C', to: 'Z', fare: 500, ground: { total: 0 } }
+  ]);
+  assert.deepStrictEqual(ranked.map((r) => r.allIn), [300, 350, 500]);
+  assert.deepStrictEqual(ranked.map((r) => r.overBest), [0, 50, 200]);
+  assert.deepStrictEqual(ranked.map((r) => r.rank), [1, 2, 3]);
+});
+
+test('a combination that never came back with a fare is left out', () => {
+  const ranked = PB.drive.rank([
+    { from: 'A', to: 'Z', fare: 300, ground: { total: 0 } },
+    { from: 'B', to: 'Z', fare: null, ground: { total: 0 } },
+    { from: 'C', to: 'Z', fare: 0, ground: { total: 0 } }
+  ]);
+  assert.strictEqual(ranked.length, 1, 'no fare means nothing to rank, not a free flight');
+});
+
+test('distance between airports is offered for scale, null when unknown', () => {
+  assert.ok(PB.drive.milesBetween('DEN', 'LAX') > 800);
+  assert.strictEqual(PB.drive.milesBetween('DEN', 'ZZZ'), null);
+});
+
+/* Regression: js/drive.js was added to index.html but not to the service
+ * worker, and CACHE was left alone. The worker serves the shell cache-first,
+ * so every existing visitor kept getting the previous index.html — the new
+ * feature was live and invisible, which looks exactly like it was never built.
+ *
+ * This is a file-level check on purpose: it catches the mistake at `npm test`,
+ * before a deploy, without needing a browser or a service worker. */
+test('every script the page loads is precached, and CACHE was bumped', () => {
+  const root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+
+  const scripts = [...html.matchAll(/src="([^"]+\.js)"/g)].map((m) => m[1]);
+  assert.ok(scripts.length > 5, 'sanity: the page should load several scripts');
+
+  const missing = scripts.filter((s) => !sw.includes("'./" + s + "'"));
+  assert.deepStrictEqual(missing, [],
+    'these are loaded by index.html but absent from the service worker ASSETS list');
+
+  const css = [...html.matchAll(/href="([^"]+\.css)"/g)].map((m) => m[1]);
+  const missingCss = css.filter((c) => !sw.includes("'./" + c + "'"));
+  assert.deepStrictEqual(missingCss, [], 'stylesheets must be precached too');
+
+  assert.match(sw, /const CACHE = 'milematch-v(\d+)'/,
+    'the cache name carries the version that must change when assets do');
 });

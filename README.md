@@ -13,7 +13,9 @@ Static site, no build step, no backend, no account. Installs as a desktop app.
 
 1. You tell it your points balances (Chase UR, Amex MR, Capital One, Citi,
    Bilt, Wells Fargo, plus any airline miles you already hold).
-2. You give it a route, cabin, and the cash price of the flight.
+2. You give it a route, cabin, and the cash price of the flight. **You can pick
+   several airports on each side** — it searches every pairing and ranks them on
+   what the whole trip costs, not just the fare.
 3. It prices that trip across ~22 airline programs, works out which ones you can
    reach — including multi-currency transfers — and ranks them by value per point.
 4. It tells you the exact transfer path: *"Transfer 40,000 Chase UR → Aeroplan,
@@ -21,6 +23,26 @@ Static site, no build step, no backend, no account. Installs as a desktop app.
 
 Plus: tick any credit card and its welcome bonus is added to your balances, so
 you can see exactly what a sign-up bonus would buy before you apply.
+
+### Comparing airports
+
+The cheapest fare is regularly not the cheapest trip. Tell it what each airport
+costs you to use — drive time each way, and what parking runs for the trip — and
+it ranks the pairings on the total:
+
+    COS → PHX   $412 all-in   Best trip
+      fare $298 · drive 25m each way · park $56 · gas $12
+
+    DEN → PHX   $445 all-in   Cheapest fare, costlier trip
+      fare $261 · drive 1h50m each way · park $98 · gas $52   —  $33 more than the best
+
+An hour of driving defaults to $25 and fuel to $0.20/mile, both changeable in
+Settings. Drive times are typed, never guessed: the app knows where the airports
+are but not where you live, and a wrong guess would quietly reorder the results.
+
+Searches run **one pair at a time**, results appear as they land, and there is a
+Stop button — nine pairings is nine lookups against the monthly allowance, and
+most answers are obvious after two.
 
 ## What it deliberately does not do
 
