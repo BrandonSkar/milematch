@@ -36,6 +36,11 @@
     bindBalances();
     bindCards();
     bindSettings();
+    var pp = $('#perPairInput');
+    if (pp) pp.addEventListener('change', function () {
+      updateComboNote();
+      persistSearchForm();
+    });
     bindOfferSort();
     bindInstall();
     bindIosInstallNotice();
@@ -279,6 +284,9 @@
       verifiedOnly: $('#verifiedOnlyInput').checked,
       freeCarryOn: $('#carryOnInput').checked,
       freeChecked: $('#checkedBagInput').checked,
+      /* Off by default: one comma-separated lookup covers every pair. On, it
+       * spends one per pair to guarantee a fare from each airport. */
+      perPairSearch: !!($('#perPairInput') || {}).checked,
       // Chips plus anything typed into the overflow box, de-duplicated.
       airlines: pickedAirlines.concat(
         ($('#airlineInput').value || '')
@@ -424,6 +432,7 @@
     $('#verifiedOnlyInput').checked = !!s.verifiedOnly;
     $('#carryOnInput').checked = !!s.freeCarryOn;
     $('#checkedBagInput').checked = !!s.freeChecked;
+    if ($('#perPairInput')) $('#perPairInput').checked = !!s.perPairSearch;
     /* Restore chips for anything in the curated list; the rest goes back into
      * the free-text overflow box. */
     if (s.airlines && s.airlines.length) {
@@ -1781,27 +1790,43 @@
     el.addEventListener('blur', function () { if (this.value.trim()) commit(); });
   }
 
-  /** How many searches the current selection would cost, said plainly and
-   *  before any of it is spent. */
+  /** What the current selection would cost, said plainly and before anything
+   *  is spent. */
   function updateComboNote() {
     var el = $('#comboCost');
+    var field = $('#perPairField');
     if (!el) return;
+
     var combos = PB.flights.combos(airportsOn('from'), airportsOn('to'));
     var live = ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value === 'live';
+    var perPair = !!($('#perPairInput') || {}).checked;
+
+    if (field) field.hidden = !(combos.length > 1 && live);
 
     if (combos.length > 1 && live) {
       el.hidden = false;
-      el.innerHTML = '<b>' + combos.length + ' airport pairs.</b> A live search costs <b>' +
-        combos.length + ' lookups</b> of the shared monthly allowance — they run one ' +
-        'at a time, results appear as they arrive, and you can stop early.';
-    } else if (combos.length > 1) {
-      el.hidden = false;
-      el.innerHTML = '<b>' + combos.length + ' airport pairs selected.</b> Comparing them ' +
-        'needs <b>Live search</b> above; the other price sources only handle one route.';
+      if (perPair) {
+        el.className = 'hint warn';
+        el.innerHTML = '<b>' + combos.length + ' airport pairs, ' + combos.length +
+          ' lookups.</b> They run one at a time, results appear as they arrive, ' +
+          'and you can stop early. Untick above to do it in a single lookup.';
+      } else {
+        el.className = 'hint';
+        el.innerHTML = '<b>' + combos.length + ' airport pairs, one lookup.</b> ' +
+          'Both airport lists go in a single search. Results are ranked across ' +
+          'all of them, so a pair that loses to everything else may not appear.';
+      }
     } else {
       el.hidden = true;
+      if (combos.length > 1) {
+        el.hidden = false;
+        el.className = 'hint warn';
+        el.innerHTML = '<b>' + combos.length + ' airport pairs selected.</b> Comparing them ' +
+          'needs <b>Live search</b> above; the other price sources handle one route.';
+      }
     }
   }
+
 
   /* ── Searching every pair ─────────────────────────────────────── */
 
@@ -1923,19 +1948,66 @@
     if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function runComboSearch(q, combos) {
-    var ok = window.confirm(
-      combos.length + ' airport pairs will be searched, one at a time.\n\n' +
-      'That is ' + combos.length + ' lookups against the shared monthly allowance. ' +
-      'Results appear as they arrive and you can stop early.\n\nGo ahead?');
-    if (!ok) { setStatus(''); return; }
-
+  function startComboRun() {
     comboStop = false;
     comboRows = [];
     comboPicked = null;
     $('#comboWrap').hidden = false;
     $('#offersWrap').hidden = true;
     $('#results').innerHTML = '';
+  }
+
+  /* Every airport pair in ONE lookup.
+   *
+   * departure_id and arrival_id each take a comma-separated list, so nine pairs
+   * cost one search instead of nine. On a 250-a-month allowance that is the
+   * difference between this feature being usable and being rationed.
+   *
+   * The trade is real: Google ranks across all the pairs at once, so a pair
+   * whose best fare loses to everything else may not come back at all. That is
+   * the right answer to "which airport should I use" and the wrong one to "what
+   * is the best fare from each" — which is what the per-pair run below is for.
+   */
+  function runComboSearch(q, combos) {
+    if (q.perPairSearch) return runComboSearchPerPair(q, combos);
+
+    startComboRun();
+    setStatus('Searching ' + combos.length + ' airport pairs in one lookup…', 'busy');
+
+    PB.flights.searchMulti(q, state.settings, q.origins, q.destinations)
+      .then(function (rows) {
+        comboRows = rows;
+        if (!rows.length) {
+          setStatus('No fares came back for any of those pairs. Try other dates, or ' +
+                    'enter a price yourself.', 'err');
+          return;
+        }
+        /* Say which pairs are missing and why. "PDX did not appear" reads as a
+         * bug unless it also says the search ranked everything together. */
+        var missing = combos.length - rows.length;
+        if (missing > 0) {
+          setStatus('<b>' + rows.length + ' of ' + combos.length + ' pairs came back</b> ' +
+            'from one lookup. The rest did not make the top results — tick ' +
+            '<b>Price every pair separately</b> to search them individually.', 'warn');
+        } else {
+          setStatus('');
+        }
+        renderComboResults();
+      })
+      .catch(function (err) {
+        setStatus('Multi-airport search failed: ' + esc(err.message), 'err');
+      });
+  }
+
+  function runComboSearchPerPair(q, combos) {
+    var ok = window.confirm(
+      combos.length + ' airport pairs will be searched, one at a time.\n\n' +
+      'That is ' + combos.length + ' lookups against the shared monthly allowance. ' +
+      'Untick "Price every pair separately" to do it in a single lookup instead.\n\n' +
+      'Results appear as they arrive and you can stop early.\n\nGo ahead?');
+    if (!ok) { setStatus(''); return; }
+
+    startComboRun();
     setStatus('Searching ' + combos.length + ' airport pairs…', 'busy');
 
     PB.flights.searchCombos(q, state.settings, combos, {

@@ -28,13 +28,17 @@ you can see exactly what a sign-up bonus would buy before you apply.
 Pick several airports on either side and it searches every pairing, ranked by
 the cheapest fare it found:
 
-    SEA → LHR   $612   Cheapest
-    PDX → LHR   $661   —  $49 more than SEA
+    SEA -> LHR   $612   Cheapest
+    PDX -> LHR   $661   -  $49 more than SEA
 
-Searches run **one pair at a time**, results appear as they land, and there is a
-Stop button — nine pairings is nine lookups against the monthly allowance, and
-most answers are obvious after two. Tap any row to load its flights and price
-them in points.
+**All of it is one lookup.** Google Flights takes a comma-separated list on both
+ends, so nine pairings cost one search rather than nine. The results are ranked
+across every pair at once, which means a pair whose best fare loses to
+everything else may not come back at all - the right answer to "which airport
+should I use", and the wrong one to "what is the best fare from each". Tick
+**Price every pair separately** for the latter, at one lookup per pair.
+
+Tap any row to load its flights and price them in points.
 
 ## What it deliberately does not do
 

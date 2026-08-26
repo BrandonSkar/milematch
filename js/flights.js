@@ -602,4 +602,60 @@ window.PB = window.PB || {};
     });
   };
 
+
+  /* Which airports an offer actually flies between.
+   *
+   * With several origins in one search the results come back mixed, so the
+   * route has to be read off the flight itself rather than assumed from what
+   * was asked for. */
+  PB.flights.routeOf = function (offer) {
+    var segs = (offer && offer.itineraries && offer.itineraries[0] &&
+                offer.itineraries[0].segments) || [];
+    if (!segs.length) return null;
+    var from = segs[0].from;
+    var to = segs[segs.length - 1].to;
+    return (from && to) ? { from: from, to: to } : null;
+  };
+
+  /** Sort a mixed result set into one bucket per airport pair. */
+  PB.flights.groupByRoute = function (offers) {
+    var index = {};
+    var out = [];
+    (offers || []).forEach(function (o) {
+      var r = PB.flights.routeOf(o);
+      if (!r) return;
+      var key = r.from + ">" + r.to;
+      if (!index[key]) {
+        index[key] = { from: r.from, to: r.to, offers: [], error: null };
+        out.push(index[key]);
+      }
+      index[key].offers.push(o);
+    });
+    return out;
+  };
+
+  /* Every airport pair in ONE lookup.
+   *
+   * departure_id and arrival_id both take a comma-separated list, so
+   * "SEA,PDX" to "LHR,CDG" is a single search rather than four. On a 250-a-month
+   * allowance that is the difference between the feature being usable and being
+   * rationed.
+   *
+   * The trade: Google ranks the results globally, so what comes back is the best
+   * flights ACROSS the pairs, not a guaranteed sample from each. A pair whose
+   * cheapest option is worse than everything else may not appear at all - which
+   * is usually the right answer to "which airport should I use", and is not the
+   * right answer to "what is the best fare from each". searchCombos() still does
+   * the latter, at one lookup per pair.
+   */
+  PB.flights.searchMulti = function (q, settings, origins, destinations) {
+    var one = Object.assign({}, q, {
+      from: (origins || []).join(","),
+      to: (destinations || []).join(",")
+    });
+    return PB.flights.searchLive(one, settings).then(function (offers) {
+      return PB.flights.groupByRoute(offers);
+    });
+  };
+
 })(window.PB);

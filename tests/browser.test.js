@@ -324,7 +324,31 @@ test('what a multi-airport search will cost is stated before it is spent', maybe
   })`);
   assert.strictEqual(note.hidden, false);
   assert.match(note.text, /4 airport pairs/, 'two origins against two destinations');
-  assert.match(note.text, /4 lookups/, 'and it says what that costs, before spending it');
+  assert.match(note.text, /one lookup/i,
+    'both lists go in one comma-separated search, so four pairs cost one');
+});
+
+test('pricing every pair separately says what it will really cost', maybe, async () => {
+  const note = await evaluate(`(() => {
+    const pp = document.querySelector('#perPairInput');
+    pp.checked = true;
+    pp.dispatchEvent(new Event('change', { bubbles: true }));
+    return {
+      fieldShown: !document.querySelector('#perPairField').hidden,
+      text: document.querySelector('#comboCost').textContent
+    };
+  })()`);
+
+  assert.ok(note.fieldShown, 'the choice only appears when there is more than one pair');
+  assert.match(note.text, /4 lookups/,
+    'four pairs priced individually is four searches, and it must say so first');
+
+  // Leave it off for the tests that follow.
+  await evaluate(`(() => {
+    const pp = document.querySelector('#perPairInput');
+    pp.checked = false;
+    pp.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
 });
 
 /* The other regression: the Google Flights href only refreshed when the

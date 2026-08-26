@@ -1194,3 +1194,41 @@ test('a clock skewed into the future reads as now, not negative', () => {
   // do not have to agree, and "-3m ago" would look broken.
   assert.strictEqual(PB.fmt.ago('2026-08-25T12:05:00Z', '2026-08-25T12:00:00Z'), 'just now');
 });
+
+/* ── Every airport pair in one lookup ──────────────────────────
+ *
+ * departure_id and arrival_id each take a comma-separated list, so nine pairs
+ * cost one search rather than nine. The results come back mixed, so the route
+ * has to be read off each flight rather than assumed from what was asked. */
+
+test('an offer reports the airports it actually flies between', () => {
+  const o = { itineraries: [{ segments: [
+    { from: 'PDX', to: 'SEA' }, { from: 'SEA', to: 'LHR' }
+  ] }] };
+  const r = PB.flights.routeOf(o);
+  assert.strictEqual(r.from, 'PDX', 'the first leg it leaves from');
+  assert.strictEqual(r.to, 'LHR', 'and the last leg it lands at, not the connection');
+});
+
+test('an offer with no legs claims no route rather than a wrong one', () => {
+  assert.strictEqual(PB.flights.routeOf({ itineraries: [{ segments: [] }] }), null);
+  assert.strictEqual(PB.flights.routeOf({}), null);
+  assert.strictEqual(PB.flights.routeOf(null), null);
+});
+
+test('a mixed result set sorts itself into one bucket per pair', () => {
+  const seg = (f, t) => ({ itineraries: [{ segments: [{ from: f, to: t }] }], price: 1 });
+  const groups = PB.flights.groupByRoute([
+    seg('SEA', 'LHR'), seg('PDX', 'CDG'), seg('SEA', 'LHR'), seg('SEA', 'CDG')
+  ]);
+
+  assert.strictEqual(groups.length, 3, 'three distinct pairs came back');
+  const seattleLondon = groups.filter((g) => g.from === 'SEA' && g.to === 'LHR')[0];
+  assert.strictEqual(seattleLondon.offers.length, 2, 'both SEA→LHR flights land in one bucket');
+});
+
+test('a flight with no readable route is dropped, not bucketed as undefined', () => {
+  const seg = (f, t) => ({ itineraries: [{ segments: [{ from: f, to: t }] }] });
+  const groups = PB.flights.groupByRoute([seg('SEA', 'LHR'), {}, seg(null, 'CDG')]);
+  assert.strictEqual(groups.length, 1);
+});
