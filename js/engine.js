@@ -39,7 +39,6 @@ window.PB = window.PB || {};
   };
 
   /** Region-chart key, tried in both directions by lookupRegion(). */
-  PB.regionKey = function (from, to) { return from.region + '-' + to.region; };
 
   /* ---------------------------------------------------------------------
    * Chart lookups

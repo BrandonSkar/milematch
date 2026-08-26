@@ -307,9 +307,7 @@ test('the swap button exchanges whole selections, not just the boxes', maybe, as
 test('what a multi-airport search will cost is stated before it is spent', maybe, async () => {
   await clearSides();
   await evaluate(`(() => {
-    const live = [...document.querySelectorAll('input[name=fareSource]')].find(r => r.value === 'live');
-    live.checked = true;
-    live.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('#fareFallback').hidden = true;
     document.querySelector('#fromInput').focus();
   })()`);
   await typeText('sea');
@@ -415,7 +413,8 @@ test('a full search renders ranked results', maybe, async () => {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     // Default fare source is now "paste"; this test drives the typed-price path.
-    document.querySelector('input[name=fareSource][value=manual]').click();
+    (() => { document.querySelector('#fareFallback').hidden = false;
+      document.querySelector('#pasteInput').value = ''; })();
     set('#bal-C1', 30000);
     set('#fromInput', 'SEA'); set('#toInput', 'SNA');
     set('#cabinInput', 'y'); set('#cashInput', 389);
@@ -484,7 +483,8 @@ test('pasting flight results produces pickable offers and prices them', maybe, a
     });
     document.querySelectorAll('#airlineChips .chip-toggle.is-on').forEach(b => b.click());
 
-    document.querySelector('input[name=fareSource][value=paste]').click();
+    (() => { document.querySelector('#fareFallback').hidden = false;
+      document.querySelector('#cashInput').value = ''; })();
     set('#bal-C1', 200000);
     set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
     set('#pasteInput', [
@@ -556,14 +556,19 @@ test('filters are marked inactive when there is no flight list to filter', maybe
   const note = await evaluate(`(() => {
     const cb = document.querySelector('#nonStopInput');
     if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event('change',{bubbles:true})); }
-    document.querySelector('input[name=fareSource][value=manual]').click();
+    /* A typed price with nothing pasted: one number, no flight list. An
+     * EMPTY fallback still counts as live, deliberately - it means "try the
+     * network again" - so the price has to actually be there. */
+    document.querySelector('#fareFallback').hidden = false;
+    document.querySelector('#pasteInput').value = '';
+    document.querySelector('#cashInput').value = '389';
     cb.checked = true;
     cb.dispatchEvent(new Event('change', { bubbles: true }));
     return document.querySelector('#filtersNote').textContent;
   })()`);
   // Typing a single price gives nothing to filter, so the note must say so.
   assert.match(note, /need a list of flights/i);
-  assert.match(note, /Paste results/i, 'should point at the mode that does work');
+  assert.match(note, /paste the results/i, 'and point at what does work');
 });
 
 /* Simulated card bonuses are blended into the balances the engine uses, so a
@@ -584,7 +589,8 @@ test('results built on simulated card bonuses say so loudly', maybe, async () =>
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     };
-    document.querySelector('input[name=fareSource][value=manual]').click();
+    (() => { document.querySelector('#fareFallback').hidden = false;
+      document.querySelector('#pasteInput').value = ''; })();
     // A small real balance, then a large simulated bonus on top.
     // Clear every balance, currencies AND airline programs, so the real
     // total is known rather than inherited from an earlier test.
@@ -660,7 +666,8 @@ async function pasteBaggedFares() {
     });
     document.querySelectorAll('#airlineChips .chip-toggle.is-on').forEach(b => b.click());
 
-    document.querySelector('input[name=fareSource][value=paste]').click();
+    (() => { document.querySelector('#fareFallback').hidden = false;
+      document.querySelector('#cashInput').value = ''; })();
     set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
     set('#pasteInput', [
       'Alaska', '8 hr 20 min', 'Nonstop', '1 free checked bag', '$298', 'round trip',
@@ -801,7 +808,9 @@ async function liveRoundTripSearch() {
     if (!rt.checked) { rt.checked = true; rt.dispatchEvent(new Event('change', { bubbles: true })); }
     set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
     set('#dateInput', '2026-11-15'); set('#returnInput', '2026-11-22');
-    document.querySelector('input[name=fareSource][value=live]').click();
+    (() => { const f = document.querySelector('#fareFallback'); f.hidden = true;
+      document.querySelector('#cashInput').value = '';
+      document.querySelector('#pasteInput').value = ''; })();
     document.querySelector('#searchForm')
       .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
   })()`);
@@ -927,7 +936,9 @@ test('every row shows when it leaves and lands, without being opened', maybe, as
     };
     set('#fromInput', 'SEA'); set('#toInput', 'SNA'); set('#cabinInput', 'y');
     set('#dateInput', '2026-11-15');
-    document.querySelector('input[name=fareSource][value=live]').click();
+    (() => { const f = document.querySelector('#fareFallback'); f.hidden = true;
+      document.querySelector('#cashInput').value = '';
+      document.querySelector('#pasteInput').value = ''; })();
     document.querySelector('#searchForm')
       .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
   })()`);
@@ -1023,7 +1034,8 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
       if (el.value) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
     });
     set('#bal-MR', 400000);
-    document.querySelector('input[name=fareSource][value=manual]').click();
+    (() => { document.querySelector('#fareFallback').hidden = false;
+      document.querySelector('#pasteInput').value = ''; })();
     set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'j');
     set('#cashInput', 1800);
     document.querySelector('#searchForm')
@@ -1083,7 +1095,8 @@ const twoFares = () => evaluate(`(() => {
     const el = document.querySelector(s);
     if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change',{bubbles:true})); }
   });
-  document.querySelector('input[name=fareSource][value=paste]').click();
+  (() => { document.querySelector('#fareFallback').hidden = false;
+      document.querySelector('#cashInput').value = ''; })();
   set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
   // The nonstop is the DEARER of the two on purpose: sorting by stops has to
   // reorder against price, not merely agree with it.
@@ -1265,3 +1278,4 @@ test('and the label still focuses the box it belongs to', maybe, async () => {
   const focused = await evaluate(`document.activeElement.id`);
   assert.strictEqual(focused, 'fromInput', 'which is the whole point of a label');
 });
+

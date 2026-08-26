@@ -384,20 +384,6 @@ window.PB = window.PB || {};
    * A blunt distance curve so the app is usable with no API key. It is NOT
    * a quoted fare and the UI always says so.
    * ----------------------------------------------------------------- */
-  PB.flights.estimateFare = function (q) {
-    var from = PB.airports[q.from], to = PB.airports[q.to];
-    if (!from || !to) return null;
-    var d = PB.distance(from, to);
-
-    // Economy: a fixed cost to get airborne plus a per-mile taper.
-    var econ = 70 + Math.pow(d, 0.82) * 0.55;
-    if (from.region !== to.region) econ *= 1.25;
-
-    var cabinMult = { y: 1, w: 1.9, j: 3.6, f: 6.2 }[q.cabin] || 1;
-    var oneWay = econ * cabinMult;
-    var total = oneWay * (q.roundTrip ? 1.85 : 1) * (q.passengers || 1);
-    return Math.round(total / 5) * 5;
-  };
 
   /* -------------------------------------------------------------------
    * Google Flights deep links.

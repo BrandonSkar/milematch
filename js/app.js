@@ -119,14 +119,6 @@
       persistSearchForm();
     });
 
-    $$('input[name=fareSource]').forEach(function (r) {
-      r.addEventListener('change', function () {
-        applyFareSource(this.value);
-        updateFiltersNote();
-        persistSearchForm();
-      });
-    });
-
     /* Every one of these feeds the Google Flights deep link, so the link has
      * to be rebuilt on each — not just when the airport fields change. */
     ['#dateInput', '#returnInput', '#cabinInput', '#paxInput', '#cashInput'].forEach(function (sel) {
@@ -194,28 +186,6 @@
       e.preventDefault();
       runSearch();
     });
-  }
-
-  function applyFareSource(mode) {
-    $('#manualFare').hidden   = mode !== 'manual';
-    $('#liveFare').hidden     = mode !== 'live';
-    $('#estimateFare').hidden = mode !== 'estimate';
-    $('#pasteFare').hidden    = mode !== 'paste';
-
-    if (mode === 'live') {
-      var hint = $('#liveFareHint');
-      if (PB.flights.hasProxy(state.settings)) {
-        hint.textContent = PB.flights.usingSharedProxy(state.settings)
-          ? (PB.CONFIG.sharedProxyNote || 'Using the shared fare lookup.')
-          : 'Fares come through your own worker at ' + PB.flights.proxyUrl(state.settings);
-        hint.classList.remove('warn');
-      } else {
-        hint.innerHTML = 'No fare lookup is configured yet. Deploy the worker in ' +
-          '<code>worker/</code> (about five minutes, free) and everyone using this site gets ' +
-          'real Google Flights results automatically. Until then, use <b>Paste results</b>.';
-        hint.classList.add('warn');
-      }
-    }
   }
 
   function updateAirportHints() {
@@ -295,7 +265,9 @@
           .map(function (s) { return s.trim(); })
           .filter(function (s) { return /^[A-Z0-9]{2}$/.test(s); })
       ).filter(function (c, i, a) { return a.indexOf(c) === i; }),
-      fareSource: ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value || 'manual'
+      /* Derived, not chosen: live unless the fallback is open and holds
+       * something. See fareSourceNow(). */
+      fareSource: fareSourceNow()
     };
   }
 
@@ -405,14 +377,15 @@
       note.textContent = 'Filtering by: ' + on.join(', ') + '.';
       note.classList.remove('warn');
     } else {
-      note.innerHTML = 'These filters need a list of flights. Use <b>Paste results</b> ' +
-        '— otherwise they are ignored.';
+      note.innerHTML = 'These filters need a list of flights. One typed price is ' +
+        'a single number, so they are ignored — paste the results instead and ' +
+        'they start working again.';
       note.classList.add('warn');
     }
   }
 
   function persistSearchForm() {
-    PB.store.patch({ lastSearch: readForm(), settings: { fareSource: readForm().fareSource } });
+    PB.store.patch({ lastSearch: readForm() });
   }
 
   function restoreSearchForm() {
@@ -443,10 +416,7 @@
       if (extra.length) $('#airlineInput').value = extra.join(', ');
     }
 
-    var mode = (state.settings && state.settings.fareSource) || 'paste';
-    var radio = $$('input[name=fareSource]').filter(function (r) { return r.value === mode; })[0];
-    if (radio) radio.checked = true;
-    applyFareSource(mode);
+    renderLiveHint();
     updateAirportHints();
     updateFiltersNote();
     if ($('#airlineChips').children.length) renderAirlineChips();
@@ -493,17 +463,24 @@
       return;
     }
 
+    /* Always try the network first.
+     *
+     * There used to be four radio buttons here asking which fare source to
+     * use. That made people choose before they had any way of knowing which
+     * would work — and now that every airport pair costs one lookup, the
+     * answer is "live" essentially always. The fallbacks appear when the
+     * lookup cannot answer, which is the only moment they are useful. */
     if (q.fareSource === 'live') {
       if (!PB.flights.hasProxy(state.settings)) {
-        setStatus('Live search needs a worker URL. Add one in <b>Settings</b>, or pick another fare source.', 'err');
+        showFallback('No fare lookup is configured. Deploy the worker in <code>worker/</code> ' +
+                     '(about five minutes, free) or add its URL in <b>Settings</b>. ' +
+                     'Meanwhile, a price you enter yourself works just as well.');
         return;
       }
       if (!q.date) {
-        setStatus('Live search needs a departure date.', 'err');
+        setStatus('Pick a departure date.', 'err');
         return;
       }
-      /* More than one pair is a different job: sequential, interruptible,
-       * and ranked on the whole trip rather than the fare. */
       if (combos.length > 1) { runComboSearch(q, combos); return; }
 
       $('#comboWrap').hidden = true;
@@ -513,15 +490,15 @@
         liveOffers = offers;
         returnsByOffer = {};
         if (!offers.length) {
-          setStatus('No fares came back for that route and date. Try another date, or enter a price manually.', 'err');
+          showFallback('Nothing came back for that route and date. Try another date, ' +
+                       'or put in a price yourself.');
           $('#results').innerHTML = '';
           return;
         }
         setStatus('');
         applyOfferFilters();
       }).catch(function (err) {
-        setStatus('Live search failed: ' + esc(err.message) +
-          '<br><small>Check the worker URL in Settings, or switch to entering the price yourself.</small>', 'err');
+        showFallback('Live search failed: ' + esc(err.message));
       });
       return;
     }
@@ -530,7 +507,8 @@
       liveOffers = PB.flights.parsePastedFares($('#pasteInput').value);
       returnsByOffer = {};
       if (!liveOffers.length) {
-        setStatus('Paste the copied flight results first — the app reads the prices out of them.', 'err');
+        setStatus('Nothing recognisable in that paste — the app reads prices out of ' +
+                  'copied Google Flights results.', 'err');
         return;
       }
       setStatus('');
@@ -539,20 +517,58 @@
     }
 
     $('#offersWrap').hidden = true;
-    var cash = q.cashPrice;
-
-    if (q.fareSource === 'estimate') {
-      cash = PB.flights.estimateFare(q);
-      $('#cashInput').value = cash;
-    }
-
-    if (!cash) {
-      setStatus('Enter the cash price for this trip so the app has something to measure points against.', 'err');
+    if (!q.cashPrice) {
+      setStatus('Enter the cash price for this trip so the app has something to ' +
+                'measure points against.', 'err');
       return;
     }
 
     setStatus('');
-    evaluateWith(q, cash);
+    evaluateWith(q, q.cashPrice);
+  }
+
+  /* Reveal the manual price box, and say WHY it is being asked for.
+   *
+   * A fallback that appears without explanation reads as the app being broken.
+   * The reason is the whole message. */
+  function showFallback(why) {
+    var box = $('#fareFallback');
+    if (!box) return;
+    box.hidden = false;
+    $('#fallbackWhy').innerHTML = why;
+    setStatus('');
+    var cash = $('#cashInput');
+    if (cash && !cash.value) cash.focus();
+  }
+
+  /** Where fares are coming from, derived rather than chosen.
+   *
+   * Live unless the fallback is open AND holds something. An open but empty
+   * fallback means "try the network again", which is what pressing Search
+   * after fixing a worker URL should do. */
+  function fareSourceNow() {
+    var box = $('#fareFallback');
+    if (!box || box.hidden) return 'live';
+    if (($('#pasteInput').value || '').trim()) return 'paste';
+    if ($('#cashInput').value) return 'manual';
+    return 'live';
+  }
+
+  /** Who is paying for the lookups, said once, without a mode to pick. */
+  function renderLiveHint() {
+    var hint = $('#liveFareHint');
+    if (!hint) return;
+    if (PB.flights.hasProxy(state.settings)) {
+      hint.textContent = PB.flights.usingSharedProxy(state.settings)
+        ? (PB.CONFIG.sharedProxyNote || 'Fares are looked up live when you search.')
+        : 'Fares come through your own worker at ' + PB.flights.proxyUrl(state.settings);
+      hint.classList.remove('warn');
+    } else {
+      hint.innerHTML = 'No fare lookup is configured, so prices have to be entered by hand. ' +
+        'Deploy the worker in <code>worker/</code> and they arrive automatically.';
+      hint.classList.add('warn');
+      showFallback('');
+    }
   }
 
   function evaluateWith(q, cashPrice) {
@@ -1067,9 +1083,8 @@
 
   function renderResults(r, q) {
     var host = $('#results');
-    var hideUnaff = state.settings.hideUnaffordable;
     var affordable = r.options.filter(function (o) { return o.affordable; });
-    var shown = hideUnaff ? affordable : r.options;
+    var shown = r.options;
 
     var html = '';
 
@@ -1550,7 +1565,7 @@
     proxy.value = state.settings.proxyUrl || '';
     proxy.addEventListener('change', function () {
       PB.store.patch({ settings: { proxyUrl: this.value.trim() } });
-      applyFareSource(readForm().fareSource);
+      renderLiveHint();
       updateComboNote();
     });
 
@@ -1844,7 +1859,7 @@
     if (!el) return;
 
     var combos = PB.flights.combos(airportsOn('from'), airportsOn('to'));
-    var live = ($$('input[name=fareSource]').filter(function (r) { return r.checked; })[0] || {}).value === 'live';
+    var live = fareSourceNow() === 'live';
     var perPair = !!($('#perPairInput') || {}).checked;
 
     if (field) field.hidden = !(combos.length > 1 && live);

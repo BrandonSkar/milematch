@@ -171,47 +171,39 @@
 
     <fieldset class="fare-source">
       <legend>Cash price to compare against</legend>
-      <div class="seg">
-        <label><input type="radio" name="fareSource" value="paste" checked> Paste results</label>
-        <label><input type="radio" name="fareSource" value="manual"> Type one price</label>
-        <label><input type="radio" name="fareSource" value="estimate"> Rough estimate</label>
-        <label><input type="radio" name="fareSource" value="live"> Live search</label>
-      </div>
+      <p class="hint" id="liveFareHint"></p>
 
-      <div id="pasteFare" class="fare-mode">
-        <p class="hint">
-          Open <a id="gfLinkPaste" href="https://www.google.com/travel/flights" target="_blank" rel="noopener">Google Flights</a>
-          (your route and dates are already in the link), select the results with
-          <kbd>Ctrl</kbd>+<kbd>A</kbd>, copy, and paste below. Prices, airlines and stops
-          are read out automatically — no account, no API key.
-        </p>
-        <textarea id="pasteInput" class="paste-box"
-                  placeholder="Paste the copied flight results here…"></textarea>
-        <p class="hint" id="pasteStatus"></p>
-      </div>
+      <!-- Only appears when the live lookup cannot answer: allowance used up,
+           no worker deployed, or nothing found for that route. Asking people to
+           pick a "fare source" up front made them choose before they had any
+           way of knowing which would work. -->
+      <div id="fareFallback" hidden>
+        <p class="hint warn" id="fallbackWhy"></p>
 
-      <div id="manualFare" class="fare-mode">
-        <label class="field">
-          <span>Cash price for the whole trip (all travelers)</span>
+        <label class="field" for="cashInput">
+          <span>Cash price for the whole trip <small>all travellers</small></span>
           <div class="input-prefix">
             <em>$</em><input id="cashInput" type="number" min="0" step="1" placeholder="1400">
           </div>
         </label>
         <p class="hint">
           Look it up on <a id="gfLink" href="https://www.google.com/travel/flights" target="_blank" rel="noopener">Google Flights</a>
-          and paste the total here. This is the number every cents-per-point figure is measured against.
+          — your route and dates are already in the link — and put the total here.
+          This is the number every cents-per-point figure is measured against.
         </p>
-      </div>
 
-      <div id="liveFare" class="fare-mode" hidden>
-        <p class="hint" id="liveFareHint"></p>
-      </div>
-
-      <div id="estimateFare" class="fare-mode" hidden>
-        <p class="hint warn">
-          A crude distance-based guess, not a real fare. Fine for kicking the tires — replace it
-          with a real price before you make any decisions.
-        </p>
+        <details id="pasteFare">
+          <summary>Or paste the results, to compare several flights at once</summary>
+          <p class="hint">
+            On <a id="gfLinkPaste" href="https://www.google.com/travel/flights" target="_blank" rel="noopener">Google Flights</a>,
+            select the results with <kbd>Ctrl</kbd>+<kbd>A</kbd>, copy, and paste below.
+            Prices, airlines and stops are read out automatically, so the filters
+            above keep working.
+          </p>
+          <textarea id="pasteInput" class="paste-box"
+                    placeholder="Paste the copied flight results here…"></textarea>
+          <p class="hint" id="pasteStatus"></p>
+        </details>
       </div>
     </fieldset>
 

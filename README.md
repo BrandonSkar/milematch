@@ -13,7 +13,8 @@ Static site, no build step, no backend, no account. Installs as a desktop app.
 
 1. You tell it your points balances (Chase UR, Amex MR, Capital One, Citi,
    Bilt, Wells Fargo, plus any airline miles you already hold).
-2. You give it a route, cabin, and the cash price of the flight. **You can pick
+2. You give it a route and cabin. Fares are looked up live; if that cannot
+   answer, it asks for a price instead. **You can pick
    several airports on each side** and it searches every pairing.
 3. It prices that trip across ~22 airline programs, works out which ones you can
    reach — including multi-currency transfers — and ranks them by value per point.
