@@ -73,14 +73,45 @@
        *
        * Say so rather than reloading underneath somebody mid-search. Every
        * balance and search is in localStorage so nothing would be lost, but a
-       * page that reloads itself unannounced is its own kind of bug. */
+       * page that reloads itself unannounced is its own kind of bug.
+       *
+       * Whether to SHOW it is a question about state, not about events: ask the
+       * worker serving this page what build it is and compare. Latching the bar
+       * on controllerchange alone left it stuck on — a reload that had already
+       * fixed the problem still had nothing that would take the bar back down,
+       * so it sat there telling you to do the thing you had just done. */
+      function syncUpdateNotice() {
+        var bar = $('#updateNotice');
+        var sw = navigator.serviceWorker.controller;
+        if (!bar || !sw) return;
+        try {
+          var ch = new MessageChannel();
+          ch.port1.onmessage = function (e) {
+            var serving = e.data && e.data.version;
+            if (!serving) return;
+            /* One test already pins PB.BUILD and CACHE together, so equal
+             * versions really do mean this page is what is being served. */
+            bar.hidden = (serving === 'milematch-v' + PB.BUILD);
+          };
+          sw.postMessage({ type: 'VERSION' }, [ch.port2]);
+        } catch (e) {
+          /* A worker old enough not to answer leaves the bar as it was. */
+        }
+      }
+
       var hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
         // The first install has no previous controller. That is not an update.
-        if (!hadController) { hadController = true; return; }
+        if (!hadController) { hadController = true; syncUpdateNotice(); return; }
         var bar = $('#updateNotice');
         if (bar) bar.hidden = false;
+        /* ...unless the new worker turns out to be this same build. */
+        syncUpdateNotice();
       });
+
+      /* And on every load, so a page that is already current never shows it
+       * and a page that is genuinely behind says so without waiting. */
+      syncUpdateNotice();
 
       var reloadBtn = $('#reloadForUpdate');
       if (reloadBtn) {

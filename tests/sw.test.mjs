@@ -262,3 +262,38 @@ test('a fare lookup is left to fetch normally', async () => {
   assert.strictEqual(sw.fetchInits[0], undefined,
     'the worker already refuses to cache these; no override needed');
 });
+
+
+/* ── The banner that would not go away ─────────────────────────
+ *
+ * "A newer version is ready" latched on a controllerchange event and had
+ * nothing that could ever take it back down again, so it survived the very
+ * reload it was asking for: you did the thing, and it still sat there asking.
+ *
+ * Staleness is a fact about the page, not an event that happened to it. The
+ * page now asks the worker serving it what build that is and compares, which
+ * only works if the worker actually answers. */
+test('the worker answers what version it is serving', () => {
+  const sw = loadSW({ network: async () => new FakeResponse('x') });
+  const sent = [];
+  sw.handlers.message({
+    data: { type: 'VERSION' },
+    ports: [{ postMessage: (m) => sent.push(m) }]
+  });
+
+  const cache = /const CACHE = '([^']+)'/.exec(SRC)[1];
+  /* Compare the values, not the objects: the reply is built inside the vm
+   * realm, so deepStrictEqual would fault on its prototype rather than on
+   * anything the worker actually got wrong. */
+  assert.deepStrictEqual(sent.map((m) => m.version), [cache],
+    'the page cannot check staleness against an answer it never gets');
+});
+
+test('and it stays quiet for messages that are not asking', () => {
+  const sw = loadSW({ network: async () => new FakeResponse('x') });
+  const sent = [];
+  const ports = [{ postMessage: (m) => sent.push(m) }];
+  sw.handlers.message({ data: { type: 'SOMETHING_ELSE' }, ports });
+  sw.handlers.message({ data: null, ports });
+  assert.deepStrictEqual(sent, [], 'only a VERSION request gets a reply');
+});

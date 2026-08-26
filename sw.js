@@ -7,7 +7,7 @@
  * after it. Bump CACHE when you change any cached file anyway - it evicts the
  * old entries that would otherwise answer while offline.
  */
-const CACHE = 'milematch-v35';
+const CACHE = 'milematch-v36';
 
 const ASSETS = [
   './',
@@ -44,6 +44,17 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+/* The page asks the worker that is actually serving it what version it is.
+ * "A newer version is ready" is a claim about staleness, and a claim has to be
+ * checkable: latching a banner on an event leaves no way to notice the event
+ * was wrong, or that the reload it asked for has already happened. */
+self.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'VERSION') return;
+  const reply = { version: CACHE };
+  if (event.ports && event.ports[0]) event.ports[0].postMessage(reply);
+  else if (event.source) event.source.postMessage(reply);
 });
 
 /* How long to wait for the network before falling back to the cache.
