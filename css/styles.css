@@ -731,3 +731,60 @@ footer {
 @media (max-width: 560px) {
   .combo-allin { margin-left: 0; }
 }
+
+/* ── Stops, as a badge next to the price ──────────────────────
+ *
+ * A column of its own costs width a phone does not have, and the number
+ * people compare is the price — so the two sit together. */
+.offer-priceline { display: flex; align-items: center; gap: .45rem; justify-content: flex-end; }
+
+.stop-badge {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .04em;
+  font-weight: 700; padding: .16rem .38rem; border-radius: 4px;
+  background: var(--bg-elev-2); color: var(--text-dim);
+  border: 1px solid var(--line); white-space: nowrap;
+}
+/* Nonstop is the thing people are hunting for, so it gets the only colour. */
+.stop-badge.direct {
+  background: color-mix(in srgb, var(--good) 18%, transparent);
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, var(--line));
+}
+.stop-badge.unknown { color: var(--text-faint); font-style: italic; }
+
+#offersSort:empty { display: none; }
+#offersSort { margin-bottom: .5rem; }
+
+/* ── Phones ───────────────────────────────────────────────────
+ *
+ * Below this width a row laid out as columns stops being readable: the
+ * airline gets three words per line while the price sits in a column of its
+ * own doing nothing. Every row becomes a card — identity on top, the number
+ * that decides it on the bottom line, full width. */
+@media (max-width: 560px) {
+  .offer-row { flex-direction: column; align-items: stretch; gap: .5rem; }
+  .offer-priceblock {
+    flex-direction: row; align-items: baseline; justify-content: space-between;
+    border-top: 1px dashed var(--line-soft); padding-top: .45rem;
+  }
+  .offer-priceline { justify-content: flex-start; gap: .5rem; }
+  .offer-price { font-size: 1.15rem; }
+  .offer-delta { text-align: right; }
+
+  /* The route matters more than the tag when there is no room for both. */
+  .combo-top { align-items: center; }
+  .combo-route { font-size: 1.05rem; }
+  .combo-allin { margin-left: auto; }
+  .combo-tag { order: 3; flex-basis: 100%; margin-top: .2rem; }
+
+  /* Redemption rows: program on its own line, the three numbers beneath it. */
+  .result > summary { grid-template-columns: 1fr auto; row-gap: .3rem; }
+  .result-program { grid-column: 1 / -1; }
+
+  .sort-bar { gap: .3rem; }
+  .sort-btn { padding: .28rem .5rem; font-size: .72rem; }
+
+  /* A tap target under ~44px is a miss on a phone. */
+  .apt-chip button { padding: .2rem .35rem; font-size: 1.05rem; }
+  .multi input { flex-basis: 100%; }
+}

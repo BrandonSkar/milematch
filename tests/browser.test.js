@@ -915,6 +915,7 @@ test('every row shows when it leaves and lands, without being opened', maybe, as
       airline: (o.querySelector('.offer-airline') || {}).textContent || '',
       over: (o.querySelector('.offer-when sup') || {}).textContent || '',
       meta: o.querySelector('.offer-meta').textContent.replace(/\\s+/g,' '),
+      badge: (o.querySelector('.stop-badge') || {}).textContent || null,
       collapsed: !o.classList.contains('is-selected')
     }))
   `);
@@ -930,7 +931,8 @@ test('every row shows when it leaves and lands, without being opened', maybe, as
   assert.match(redeye.when, /ONT\s*7:35 PM.*MCO\s*5:16 AM/,
     'origin and final destination, not the connection');
   assert.strictEqual(redeye.over, '+1', 'landing tomorrow has to be stated, not implied');
-  assert.match(redeye.meta, /1 stop in PHX/, 'and a connection should name itself');
+  assert.match(redeye.meta, /via PHX/, 'and a connection should still name itself');
+  assert.strictEqual(redeye.badge, '1 stop', 'with the count on the badge beside the price');
 });
 
 /* The row already says the airports and times, so a nonstop's single leg was
@@ -1005,7 +1007,7 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
   })()`);
 
   const buttons = await evaluate(`
-    [...document.querySelectorAll('.sort-btn')].map(b => b.dataset.sort)
+    [...document.querySelectorAll('#results .sort-btn')].map(b => b.dataset.sort)
   `);
   assert.deepStrictEqual([...buttons], ['value', 'points', 'cash']);
 
@@ -1014,7 +1016,7 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
   assert.ok(descending(byValue.map((r) => r.cpp)), 'the default ranks best value first');
 
   const clickSort = (k) =>
-    evaluate(`document.querySelector('.sort-btn[data-sort=${k}]').click()`);
+    evaluate(`document.querySelector('#results .sort-btn[data-sort=${k}]').click()`);
 
   await clickSort('points');
   const byPoints = await readRanked();
@@ -1034,4 +1036,96 @@ test('the redemption list sorts by points, by cash, and by value', maybe, async 
   const back = await readRanked();
   assert.deepStrictEqual([...back.map((r) => r.program)], [...byValue.map((r) => r.program)],
     'and it is reversible');
+});
+
+/* ── Stops, and sorting by them ────────────────────────────────
+ *
+ * Nonstop is what most people are actually hunting for, and it used to be a
+ * phrase buried in a metadata line. It is now a badge beside the price, which
+ * is the number it trades against. */
+
+const twoFares = () => evaluate(`(() => {
+  const set = (sel, v) => {
+    const el = document.querySelector(sel);
+    if (sel === '#fromInput' || sel === '#toInput') {
+      const side = sel === '#fromInput' ? '#fromChips' : '#toChips';
+      document.querySelectorAll(side + ' .apt-chip button').forEach(b => b.click());
+    }
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  ['#nonStopInput','#carryOnInput','#checkedBagInput'].forEach(s => {
+    const el = document.querySelector(s);
+    if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change',{bubbles:true})); }
+  });
+  document.querySelector('input[name=fareSource][value=paste]').click();
+  set('#fromInput', 'SEA'); set('#toInput', 'JFK'); set('#cabinInput', 'y');
+  // The nonstop is the DEARER of the two on purpose: sorting by stops has to
+  // reorder against price, not merely agree with it.
+  set('#pasteInput', [
+    'Alaska', '8 hr 20 min', 'Nonstop', '$298', 'round trip',
+    'Delta', '9 hr 10 min', '1 stop', '$264', 'round trip'
+  ].join(String.fromCharCode(10)));
+  document.querySelector('#searchForm')
+    .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+})()`);
+
+const offerRows = () => evaluate(`[...document.querySelectorAll('#offers .offer')].map(o => ({
+  airline: o.querySelector('.offer-airline').textContent,
+  badge: o.querySelector('.stop-badge') ? o.querySelector('.stop-badge').textContent : null,
+  direct: !!o.querySelector('.stop-badge.direct'),
+  price: o.querySelector('.offer-price').textContent,
+  delta: o.querySelector('.offer-delta') ? o.querySelector('.offer-delta').textContent : ''
+}))`);
+
+test('a nonstop is badged next to its price, not buried in the metadata', maybe, async () => {
+  await twoFares();
+  const rows = await offerRows();
+
+  const alaska = rows.find((r) => r.airline.includes('Alaska'));
+  const delta = rows.find((r) => r.airline.includes('Delta'));
+
+  assert.strictEqual(alaska.badge, 'Direct');
+  assert.ok(alaska.direct, 'and it is the one badge that gets a colour');
+  assert.strictEqual(delta.badge, '1 stop');
+  assert.ok(!delta.direct);
+});
+
+test('sorting by direct first beats price', maybe, async () => {
+  await twoFares();
+
+  let rows = await offerRows();
+  assert.match(rows[0].airline, /Delta/, 'cheapest first by default, stops aside');
+
+  await evaluate(`document.querySelector('[data-offer-sort=stops]').click()`);
+  rows = await offerRows();
+
+  assert.match(rows[0].airline, /Alaska/, 'the nonstop rises even though it costs more');
+  assert.ok(rows[0].direct);
+});
+
+test('the price gap still measures against the cheapest fare, not the top row', maybe, async () => {
+  await twoFares();
+  await evaluate(`document.querySelector('[data-offer-sort=stops]').click()`);
+  const rows = await offerRows();
+
+  /* Alaska is $298 and Delta $264. Sorting by stops puts Alaska first, but
+   * "+$34" has to keep meaning "more than the cheapest that came back" — if it
+   * silently re-based on whatever now sits at the top, it would read +$0. */
+  const alaska = rows.find((r) => r.airline.includes('Alaska'));
+  assert.match(alaska.delta, /\+\$34/);
+});
+
+test('the sort bar stays hidden when there is nothing to sort', maybe, async () => {
+  await evaluate(`(() => {
+    const el = document.querySelector('#pasteInput');
+    el.value = ['Alaska', '8 hr 20 min', 'Nonstop', '$298', 'round trip'].join(String.fromCharCode(10));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  })()`);
+
+  const bar = await evaluate(`document.querySelector('#offersSort').innerHTML`);
+  assert.strictEqual(bar, '', 'one flight has no order to argue about');
 });

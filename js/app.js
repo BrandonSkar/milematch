@@ -36,6 +36,7 @@
     bindBalances();
     bindCards();
     bindSettings();
+    bindOfferSort();
     bindInstall();
     bindIosInstallNotice();
 
@@ -802,11 +803,69 @@
     }).join('');
   }
 
+  /* Stops, said once, where the price is.
+   *
+   * A separate column for it costs width that a phone does not have, and the
+   * number people actually compare is the price - so the two belong together. */
+  function stopBadge(o) {
+    if (o.stops == null) return '<span class="stop-badge unknown">? stops</span>';
+    if (o.stops === 0) return '<span class="stop-badge direct">Direct</span>';
+    return '<span class="stop-badge">' + o.stops + ' stop' + (o.stops > 1 ? 's' : '') + '</span>';
+  }
+
+  var OFFER_SORTS = {
+    price:    { label: 'Cheapest',     key: function (o) { return tripTotal(o); } },
+    stops:    { label: 'Direct first', key: function (o) { return o.stops == null ? 9 : o.stops; } },
+    duration: { label: 'Shortest',     key: function (o) {
+      var d = o.itineraries && o.itineraries[0] && o.itineraries[0].duration;
+      return d == null ? Infinity : d;
+    } }
+  };
+  var offerSort = 'price';
+
+  function sortOffers(list) {
+    var s = OFFER_SORTS[offerSort] || OFFER_SORTS.price;
+    return list.slice().sort(function (a, b) {
+      var d = s.key(a) - s.key(b);
+      // Price is the tiebreak everywhere else, so two directs sort sensibly.
+      return d || (tripTotal(a) - tripTotal(b));
+    });
+  }
+
+  function offerSortBar() {
+    return '<div class="sort-bar"><span>Sort by</span>' +
+      Object.keys(OFFER_SORTS).map(function (k) {
+        return '<button type="button" class="sort-btn' + (k === offerSort ? ' is-on' : '') +
+          '" data-offer-sort="' + k + '">' + OFFER_SORTS[k].label + '</button>';
+      }).join('') + '</div>';
+  }
+
+  /* Bound once on the container, because the bar is rebuilt on every render
+   * and per-button listeners would be re-attached each time. */
+  function bindOfferSort() {
+    var bar = $('#offersSort');
+    if (!bar) return;
+    bar.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('[data-offer-sort]');
+      if (!btn) return;
+      offerSort = btn.dataset.offerSort;
+      /* Sorting is a view, not a new question: re-render what is already in
+       * hand and never spend another lookup. */
+      renderOffers(null, lastQuery || readForm());
+    });
+  }
+
   function renderOffers(offers, q) {
     q = q || readForm();
     var wrap = $('#offers');
-    var list = (offers || liveOffers).slice(0, 12);
-    var cheapest = list.length ? Math.min.apply(null, list.map(function (o) { return o.price; })) : 0;
+    var all = sortOffers(offers || liveOffers);
+    var list = all.slice(0, 12);
+    /* Measured against the cheapest fare that came back, not the cheapest
+     * one still visible - sorting by Direct first must not silently change
+     * what "+$40" is forty dollars more THAN. */
+    var cheapest = all.length ? Math.min.apply(null, all.map(function (o) { return o.price; })) : 0;
+    var bar = $('#offersSort');
+    if (bar) bar.innerHTML = all.length > 1 ? offerSortBar() : '';
     wrap.innerHTML = '';
 
     list.forEach(function (o) {
@@ -823,11 +882,11 @@
        * connection exists, name it - "1 stop in PHX" is a decision, "1 stop"
        * is a riddle. */
       var meta = [];
-      if (o.stops == null) meta.push('Stops unknown');
-      else if (o.stops > 0) {
+      if (o.stops > 0) {
+        /* The badge says HOW MANY; only where the connection is has to be
+         * said in words. "1 stop in PHX" is a decision, "1 stop" is a riddle. */
         var via = segs.slice(1).map(function (s) { return s.from; }).filter(Boolean);
-        meta.push(o.stops + ' stop' + (o.stops > 1 ? 's' : '') +
-                  (via.length ? ' in ' + esc(via.join(', ')) : ''));
+        if (via.length) meta.push('via ' + esc(via.join(', ')));
       }
       if (o.durationText) meta.push(esc(o.durationText));
 
@@ -845,7 +904,8 @@
           '</span>' +
         '</span>' +
         '<span class="offer-priceblock">' +
-          '<span class="offer-price">' + PB.fmt.money(total) + '</span>' +
+          '<span class="offer-priceline">' + stopBadge(o) +
+            '<span class="offer-price">' + PB.fmt.money(total) + '</span></span>' +
           (total !== o.price
             ? '<span class="offer-delta">' + (total > o.price ? '+' : '') +
               PB.fmt.money(total - o.price) + ' · your return</span>'
