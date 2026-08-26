@@ -26,6 +26,12 @@
  */
 window.PB = window.PB || {};
 
+/* Bumped with every deploy, and with CACHE in sw.js - a test fails if they
+ * drift apart. It is printed in the footer so "am I on the new version?"
+ * can be answered by looking at the page rather than by guessing at the
+ * service worker. */
+PB.BUILD = 32;
+
 PB.CONFIG = {
   /* e.g. 'https://milematch.yourname.workers.dev' */
   sharedProxyUrl: 'https://milematch.branskar01.workers.dev',

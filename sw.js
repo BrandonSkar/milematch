@@ -7,7 +7,7 @@
  * after it. Bump CACHE when you change any cached file anyway - it evicts the
  * old entries that would otherwise answer while offline.
  */
-const CACHE = 'milematch-v31';
+const CACHE = 'milematch-v32';
 
 const ASSETS = [
   './',

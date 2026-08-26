@@ -679,18 +679,33 @@ footer {
 .multi-chips { display: contents; }
 
 .apt-chip {
-  display: inline-flex; align-items: center; gap: .3rem;
+  display: inline-flex; align-items: stretch; gap: 0;
   font-family: var(--mono); font-size: .78rem; font-weight: 700;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
   color: var(--text);
-  padding: .2rem .3rem .2rem .5rem; border-radius: 6px; white-space: nowrap;
+  padding: 0 0 0 .5rem; border-radius: 6px; white-space: nowrap;
+  /* Tall enough that the remove button inside it clears 24px. */
+  min-height: 26px; line-height: 1.9;
 }
+
+/* The remove button was 12x14 - below any usable target size, and small
+ * enough that aiming at it was a coin toss.
+ *
+ * It is now a full-height 24px column at the end of the chip. Bounded BY the
+ * chip on purpose: big enough to hit deliberately, and impossible to hit from
+ * outside the badge you are looking at. */
 .apt-chip button {
-  background: none; border: 0; cursor: pointer; padding: 0 .15rem;
+  background: none; border: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; min-width: 24px; padding: 0; margin: 0;
   color: var(--text-faint); font-size: .95rem; line-height: 1;
+  border-radius: 0 6px 6px 0;
 }
-.apt-chip button:hover { color: var(--warn); }
+.apt-chip button:hover, .apt-chip button:focus-visible {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
 
 /* ── Airport pairs, ranked by fare ─────────────────────────────── */
 .combo-list { display: flex; flex-direction: column; gap: .5rem; }
@@ -784,8 +799,8 @@ footer {
   .sort-bar { gap: .3rem; }
   .sort-btn { padding: .28rem .5rem; font-size: .72rem; }
 
-  /* A tap target under ~44px is a miss on a phone. */
-  .apt-chip button { padding: .2rem .35rem; font-size: 1.05rem; }
+  /* Wider still on a phone, where the pointer is a fingertip. */
+  .apt-chip button { width: 30px; min-width: 30px; font-size: 1.05rem; }
   .multi input { flex-basis: 100%; }
 }
 

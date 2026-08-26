@@ -1210,3 +1210,30 @@ test('a chip pulled back for editing survives the edit being abandoned', maybe, 
     'an abandoned edit puts the airport back rather than losing it');
   assert.strictEqual(state.box, '', 'and the half-typed remains do not linger');
 });
+
+/* The remove button was 12x14 — below any usable target size, so aiming at it
+ * was close to a coin toss. It must be a real target, and it must be bounded
+ * by its chip: big enough to hit on purpose, impossible to hit from outside
+ * the badge you are looking at. */
+test('the remove button is a real target, and confined to its own chip', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
+
+  const g = await evaluate(`(() => {
+    const box = (el) => { const r = el.getBoundingClientRect();
+      return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; };
+    const chip = document.querySelector('#fromChips .apt-chip');
+    return { chip: box(chip), btn: box(chip.querySelector('button')) };
+  })()`);
+
+  assert.ok(g.btn.w >= 24, 'at least 24px across, not 12 — got ' + Math.round(g.btn.w));
+  assert.ok(g.btn.h >= 24, 'and at least 24px tall — got ' + Math.round(g.btn.h));
+
+  const slack = 0.5;
+  assert.ok(g.btn.l >= g.chip.l - slack && g.btn.r <= g.chip.r + slack,
+    'it must not reach past the sides of its chip');
+  assert.ok(g.btn.t >= g.chip.t - slack && g.btn.b <= g.chip.b + slack,
+    'nor above or below it — a click outside a badge must never delete it');
+});

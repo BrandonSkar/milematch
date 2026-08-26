@@ -220,3 +220,19 @@ test('installing precaches every asset, and one bad file does not abort it', asy
   assert.ok(sw.store.has('./js/app.js'),
     'a single 404 must not take the rest of the precache down with it');
 });
+
+/* The build number in the footer is how "am I looking at the new version?"
+ * gets answered without opening devtools — so it has to actually track the
+ * cache it is meant to describe. */
+test('the footer build number matches the service worker cache', () => {
+  const cfg = readFileSync(join(ROOT, 'data', 'config.js'), 'utf8');
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+
+  const build = /PB\.BUILD\s*=\s*(\d+)/.exec(cfg);
+  const cache = /const CACHE = 'milematch-v(\d+)'/.exec(sw);
+
+  assert.ok(build, 'data/config.js must declare PB.BUILD');
+  assert.ok(cache, "sw.js must declare a versioned CACHE");
+  assert.strictEqual(build[1], cache[1],
+    'bump both together, or the page will claim a version it is not serving');
+});

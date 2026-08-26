@@ -52,7 +52,8 @@
     updateBalanceChip();
 
     $('#asOf').textContent = PB.META.asOf;
-    $('#versionTag').textContent = 'Chart data as of ' + PB.META.asOf;
+    $('#versionTag').textContent = 'Chart data as of ' + PB.META.asOf +
+      (PB.BUILD ? ' · build ' + PB.BUILD : '');
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('sw.js').catch(function (e) {
