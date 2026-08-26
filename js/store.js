@@ -16,6 +16,11 @@ window.PB = window.PB || {};
      * to carry one date would ripple through all of it for no gain. */
     balanceUpdated: {},    // { UR: '2026-08-25', ... }
     simulatedCards: [],    // card ids whose welcome bonus is being modelled
+    /* Cards whose welcome bonus you have already earned. Those points are real
+     * now and belong in `balances`, so the bonus must never be added again —
+     * simulating it a second time builds a plan on points that do not exist,
+     * and most issuers will not pay the same welcome bonus twice anyway. */
+    heldCards: [],         // card ids you already hold
     customCards: [],       // user-defined cards
     settings: {
       proxyUrl: '',
@@ -30,6 +35,15 @@ window.PB = window.PB || {};
 
   function deepMerge(base, patch) {
     var out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    /* Object.assign copies an array property by REFERENCE, so a state built
+     * from DEFAULTS shared DEFAULTS' own arrays: ticking a card pushed into
+     * DEFAULTS.simulatedCards, and reset() then handed that same dirty array
+     * straight back. Clone them so "clear everything" actually clears. */
+    if (!Array.isArray(out)) {
+      Object.keys(out).forEach(function (k) {
+        if (Array.isArray(out[k])) out[k] = out[k].slice();
+      });
+    }
     Object.keys(patch || {}).forEach(function (k) {
       if (patch[k] && typeof patch[k] === 'object' && !Array.isArray(patch[k])) {
         out[k] = deepMerge(base[k] || {}, patch[k]);
@@ -40,16 +54,33 @@ window.PB = window.PB || {};
     return out;
   }
 
+  /* Copy `source` over `target` WITHOUT swapping the object itself.
+   *
+   * app.js takes one reference from load() and holds it for the life of the
+   * page. Any method that did `this.state = ...` silently orphaned that
+   * reference: the app kept writing to a dead copy while save() serialised a
+   * different one, so a change would render correctly and then vanish on
+   * reload. Nothing may replace the state object once handed out. */
+  function adopt(target, source) {
+    Object.keys(target).forEach(function (k) {
+      if (!(k in source)) delete target[k];
+    });
+    Object.keys(source).forEach(function (k) { target[k] = source[k]; });
+    return target;
+  }
+
   PB.store = {
     state: null,
 
     load: function () {
       try {
         var raw = localStorage.getItem(KEY);
-        this.state = raw ? deepMerge(DEFAULTS, JSON.parse(raw)) : deepMerge(DEFAULTS, {});
+        var next = raw ? deepMerge(DEFAULTS, JSON.parse(raw)) : deepMerge(DEFAULTS, {});
+        this.state = this.state ? adopt(this.state, next) : next;
       } catch (e) {
         console.warn('Could not read saved state, starting fresh.', e);
-        this.state = deepMerge(DEFAULTS, {});
+        var blank = deepMerge(DEFAULTS, {});
+        this.state = this.state ? adopt(this.state, blank) : blank;
       }
       return this.state;
     },
@@ -63,7 +94,7 @@ window.PB = window.PB || {};
     },
 
     patch: function (patch) {
-      this.state = deepMerge(this.state, patch);
+      adopt(this.state, deepMerge(this.state, patch));
       this.save();
       return this.state;
     },
@@ -80,7 +111,8 @@ window.PB = window.PB || {};
     },
 
     reset: function () {
-      this.state = deepMerge(DEFAULTS, {});
+      if (!this.state) this.state = {};
+      adopt(this.state, deepMerge(DEFAULTS, {}));
       this.save();
     },
 
@@ -90,7 +122,8 @@ window.PB = window.PB || {};
 
     importJSON: function (text) {
       var parsed = JSON.parse(text);
-      this.state = deepMerge(DEFAULTS, parsed);
+      if (!this.state) this.state = {};
+      adopt(this.state, deepMerge(DEFAULTS, parsed));
       this.save();
       return this.state;
     }
