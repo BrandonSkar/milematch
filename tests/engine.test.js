@@ -1167,3 +1167,30 @@ test('the exact figure is still available for anything you act on', () => {
   // A transfer amount gets typed into someone's bank; 125k is not that number.
   assert.strictEqual(PB.fmt.miles(125430), '125,430');
 });
+
+/* ── How old a price is ────────────────────────────────────────
+ *
+ * The worker caches a search for six hours, so a fare that reached the browser
+ * a moment ago may have been read from Google this morning. Presenting that as
+ * current is the one dishonest thing a fare list can do. */
+
+test('a price says how long ago it was actually seen', () => {
+  const now = '2026-08-25T12:00:00Z';
+  const ago = (iso) => PB.fmt.ago(iso, now);
+
+  assert.strictEqual(ago('2026-08-25T11:59:30Z'), 'just now');
+  assert.strictEqual(ago('2026-08-25T11:45:00Z'), '15m ago');
+  assert.strictEqual(ago('2026-08-25T05:00:00Z'), '7h ago');
+  assert.strictEqual(ago('2026-08-21T12:00:00Z'), '4d ago');
+});
+
+test('an unstamped or unparseable time says nothing rather than lying', () => {
+  assert.strictEqual(PB.fmt.ago(null), null);
+  assert.strictEqual(PB.fmt.ago('not a date'), null, 'better silent than "56 years ago"');
+});
+
+test('a clock skewed into the future reads as now, not negative', () => {
+  // The stamp is the worker's clock and the comparison is the browser's; they
+  // do not have to agree, and "-3m ago" would look broken.
+  assert.strictEqual(PB.fmt.ago('2026-08-25T12:05:00Z', '2026-08-25T12:00:00Z'), 'just now');
+});

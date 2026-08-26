@@ -101,8 +101,18 @@ window.PB = window.PB || {};
       }
       return r.json();
     }).then(function (json) {
-      // The worker normalises provider quirks, so the browser just reads them.
-      return ((json && json.offers) || []).map(PB.flights.readFareTerms);
+      /* The worker normalises provider quirks, so the browser just reads them.
+       *
+       * fetchedAt rides on every offer rather than being returned alongside:
+       * a multi-airport comparison holds results from several searches at
+       * once, each with its own age, and one number for the batch would be a
+       * lie about most of the rows. */
+      var seen = (json && json.fetchedAt) || null;
+      return ((json && json.offers) || []).map(function (o) {
+        var offer = PB.flights.readFareTerms(o);
+        offer.fetchedAt = seen;
+        return offer;
+      });
     });
   }
 

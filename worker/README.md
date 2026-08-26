@@ -126,7 +126,12 @@ or typing a price. Nothing breaks.
 | Route | Returns |
 |---|---|
 | `/health` | `{ ok, credentials, keys, provider, cacheHours, originLocked }` |
-| `/search` | `{ offers: [...] }`, already normalised for the app |
+| `/search` | `{ offers: [...], fetchedAt }`, already normalised for the app |
+
+`fetchedAt` is when SerpApi actually answered, stored **with** the cached body
+so a hit hours later still reports when the prices were really seen. The app
+shows it as "Prices seen 3h ago" and flags anything past three hours — a fare
+that reached the browser a second ago may have been read this morning.
 
 `/search` parameters: `origin`, `destination`, `departureDate` (required);
 `returnDate`, `adults`, `travelClass` (1–4), `currencyCode`, `nonStop`,

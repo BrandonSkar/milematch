@@ -788,3 +788,23 @@ footer {
   .apt-chip button { padding: .2rem .35rem; font-size: 1.05rem; }
   .multi input { flex-basis: 100%; }
 }
+
+/* ── When these prices were actually seen ─────────────────────
+ *
+ * The worker caches a search for hours, so a fare that reached the browser a
+ * second ago may have been read from Google this morning. Saying so is the
+ * difference between a price you can book and one that quietly moved. */
+.seen {
+  font-size: .68rem; font-family: var(--mono); color: var(--text-faint);
+  margin-left: auto; white-space: nowrap;
+}
+/* Past the cache window it is stale by definition, not merely old. */
+.seen.is-stale { color: var(--warn); }
+
+.combo .seen { display: block; margin: .25rem 0 0; }
+#offersSort { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+  .seen { margin-left: 0; }
+  #offersSort .seen { flex-basis: 100%; }
+}

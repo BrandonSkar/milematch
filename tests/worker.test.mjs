@@ -355,6 +355,34 @@ test('whitespace around a pasted key is trimmed off', async () => {
   assert.strictEqual(keyOf(lastSerpUrl), 'k1', 'a newline from PowerShell would be rejected as invalid');
 });
 
+/* ── When the prices were actually seen ────────────────────────
+ *
+ * A cache hit hours later must still report when SerpApi answered, not when
+ * this request was served - otherwise the app cannot tell a fresh fare from a
+ * six-hour-old one and quietly presents both as current. */
+
+test('a search is stamped with the moment SerpApi answered', async () => {
+  const before = Date.now();
+  const r = await worker.fetch(req(uniqueSearch()), env, ctx);
+  const body = await r.json();
+
+  const at = Date.parse(body.fetchedAt);
+  assert.ok(!isNaN(at), 'fetchedAt is a parseable timestamp');
+  assert.ok(at >= before - 1000 && at <= Date.now() + 1000, 'and it is now');
+});
+
+test('a cached answer keeps the ORIGINAL stamp, not the time it was served', async () => {
+  const url = uniqueSearch();
+
+  const first = await (await worker.fetch(req(url), env, ctx)).json();
+  const second = await worker.fetch(req(url), env, ctx);
+  const body = await second.json();
+
+  assert.strictEqual(second.headers.get('X-MileMatch-Cache'), 'hit', 'sanity: served from cache');
+  assert.strictEqual(body.fetchedAt, first.fetchedAt,
+    'restamping on a cache hit would report six-hour-old prices as current');
+});
+
 /* ── Health ────────────────────────────────────────────────── */
 
 test('health reports credentials and the origin lock', async () => {

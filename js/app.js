@@ -855,6 +855,28 @@
     });
   }
 
+  /* When these prices were actually seen.
+   *
+   * The worker caches a search for CACHE_HOURS, so a fare that arrived in
+   * this browser a second ago may have been read from Google six hours back.
+   * Presenting that as current is the one dishonest thing a fare list can do,
+   * and it is the failure people notice - the price is gone when they click
+   * through. The oldest stamp in the set is the honest one to show. */
+  function seenLabel(offers) {
+    var oldest = null;
+    (offers || []).forEach(function (o) {
+      var t = o.fetchedAt ? Date.parse(o.fetchedAt) : NaN;
+      if (!isNaN(t) && (oldest === null || t < oldest)) oldest = t;
+    });
+    if (oldest === null) return '';
+
+    var text = PB.fmt.ago(new Date(oldest).toISOString());
+    // Past the worker cache window these are stale by definition, not merely old.
+    var stale = (Date.now() - oldest) > 3 * 3600 * 1000;
+    return '<span class="seen' + (stale ? ' is-stale' : '') + '">Prices seen ' +
+      esc(text) + '</span>';
+  }
+
   function renderOffers(offers, q) {
     q = q || readForm();
     var wrap = $('#offers');
@@ -865,7 +887,7 @@
      * what "+$40" is forty dollars more THAN. */
     var cheapest = all.length ? Math.min.apply(null, all.map(function (o) { return o.price; })) : 0;
     var bar = $('#offersSort');
-    if (bar) bar.innerHTML = all.length > 1 ? offerSortBar() : '';
+    if (bar) bar.innerHTML = (all.length > 1 ? offerSortBar() : '') + seenLabel(all);
     wrap.innerHTML = '';
 
     list.forEach(function (o) {
@@ -1864,7 +1886,10 @@
         '<span class="combo-parts">' +
           esc(carrier && carrier.carriers ? carrier.carriers.join(', ') : 'cheapest fare') +
           (r.overBest > 0 ? '  —  $' + Math.round(r.overBest) + ' more than ' + esc(ranked[0].from) : '') +
-        '</span>';
+        '</span>' +
+        /* Per pair, not per search: each was a separate lookup and one may
+         * have come from cache while the next was read live. */
+        seenLabel(r.offers);
 
       b.addEventListener('click', function () {
         comboPicked = r.from + r.to;

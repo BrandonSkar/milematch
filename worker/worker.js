@@ -14,7 +14,8 @@
  *
  * Endpoints:
  *   GET /health  -> { ok, credentials, keys, cached }
- *   GET /search  -> normalised flight offers
+ *   GET /search  -> { offers, fetchedAt } - fetchedAt is when SerpApi
+ *                   answered, which survives in the cached copy
  *
  * Secrets (npx wrangler secret put NAME):
  *   SERPAPI_KEYS  one key, or several comma-separated. Tried in order; the
@@ -222,7 +223,15 @@ async function handleSearch(url, env, ctx, origin) {
       throw new Error(error);
     }
 
-    const payload = JSON.stringify({ offers: normalize(data) });
+    /* Stamped at the moment SerpApi actually answered, and stored WITH the
+     * cached body - so a cache hit hours later still reports when the prices
+     * were really seen, not when this request was served. Without that the
+     * app cannot tell a fresh fare from a six-hour-old one, and quietly
+     * presents both as current. */
+    const payload = JSON.stringify({
+      offers: normalize(data),
+      fetchedAt: new Date().toISOString()
+    });
     const response = new Response(payload, {
       status: 200,
       headers: {

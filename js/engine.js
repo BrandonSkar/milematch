@@ -529,7 +529,26 @@ window.PB = window.PB || {};
       if (n == null) return '—';
       return '$' + Math.round(n).toLocaleString();
     },
-    cpp: function (n) { return n == null ? '—' : n.toFixed(2) + '¢'; }
+    cpp: function (n) { return n == null ? '—' : n.toFixed(2) + '¢'; },
+
+    /* How long ago something was actually seen.
+     *
+     * Finer than balanceAgeText, which counts in days because a hand-typed
+     * balance has no better resolution. A fare does: the worker caches for
+     * six hours, so the difference between "just now" and "5h ago" is the
+     * difference between a price you can book and one that has moved. */
+    ago: function (iso, now) {
+      if (!iso) return null;
+      var t = Date.parse(iso);
+      if (isNaN(t)) return null;
+      var mins = Math.floor(((now ? Date.parse(now) : Date.now()) - t) / 60000);
+      if (mins < 0) mins = 0;
+      if (mins < 2) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      var hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      return Math.floor(hrs / 24) + 'd ago';
+    }
   };
 
 })(window.PB);
