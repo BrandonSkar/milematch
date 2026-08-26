@@ -6,8 +6,9 @@
   "scripts": {
     "test": "node --test tests/engine.test.js",
     "test:worker": "node --test tests/worker.test.mjs",
+    "test:sw": "node --test tests/sw.test.mjs",
     "test:browser": "node --test tests/browser.test.js",
-    "test:all": "node --test tests/engine.test.js tests/worker.test.mjs tests/browser.test.js",
+    "test:all": "node --test tests/engine.test.js tests/worker.test.mjs tests/sw.test.mjs tests/browser.test.js",
     "serve": "node serve.js 8080"
   },
   "keywords": ["points", "miles", "award-travel", "pwa"],

@@ -65,7 +65,8 @@ For the service worker and install prompt to work you need real HTTP:
 ```bash
 npm run serve        # http://localhost:8080
 npm test             # 41 engine tests (pure logic, no browser needed)
-npm run test:browser # 10 DOM tests, drives real Chrome over the DevTools Protocol
+npm run test:sw      # 11 service-worker tests, no browser needed
+npm run test:browser # DOM tests, drives real Chrome over the DevTools Protocol
 npm run test:all     # both suites
 ```
 

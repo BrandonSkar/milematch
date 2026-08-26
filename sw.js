@@ -3,9 +3,11 @@
  * offline. Your balances live in localStorage, so an offline launch still
  * gives you the full points engine — only live fare lookups need the network.
  *
- * Bump CACHE when you change any cached file, or the old copy will stick around.
+ * Serves network-first, so a change shows on the next load rather than the one
+ * after it. Bump CACHE when you change any cached file anyway - it evicts the
+ * old entries that would otherwise answer while offline.
  */
-const CACHE = 'milematch-v30';
+const CACHE = 'milematch-v31';
 
 const ASSETS = [
   './',
@@ -44,6 +46,23 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/* How long to wait for the network before falling back to the cache.
+ *
+ * A dead network rejects immediately; a dying one does not reject at all, and
+ * without a ceiling the app would hang on it rather than showing the copy it
+ * already has. */
+const NET_TIMEOUT_MS = 3500;
+
+function fromNetwork(req) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('network too slow')), NET_TIMEOUT_MS);
+    fetch(req).then(
+      (res) => { clearTimeout(timer); resolve(res); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -59,19 +78,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell: serve from cache, refresh in the background.
+  /* App shell: network first, cache as the fallback.
+   *
+   * This used to serve the cached copy and fetch a fresh one for NEXT time.
+   * That is faster, and it meant every change took two reloads to appear — the
+   * first handed you the old copy and quietly stored the new one, the second
+   * finally showed it. Nobody reloads twice on purpose, so what people
+   * actually saw was a site that had not changed.
+   *
+   * Offline is unaffected: the cache answers whenever the network cannot, and
+   * the timeout means a merely dreadful connection falls back too instead of
+   * hanging.
+   */
   if (url.origin === location.origin) {
     event.respondWith(
-      caches.match(req).then((cached) => {
-        const network = fetch(req).then((res) => {
-          if (res && res.status === 200) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        }).catch(() => cached);
-        return cached || network;
-      })
+      fromNetwork(req).then((res) => {
+        if (res && res.status === 200) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      }).catch(() => caches.match(req).then((cached) => cached || new Response(
+        'Offline, and this was never cached.',
+        { status: 503, headers: { 'Content-Type': 'text/plain' } }
+      )))
     );
   }
 });
