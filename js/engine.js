@@ -506,6 +506,25 @@ window.PB = window.PB || {};
 
   PB.fmt = {
     miles: function (n) { return n == null ? '—' : Math.round(n).toLocaleString(); },
+
+    /* Compact points, the way every award table writes them: 4.5k, 12k,
+     * 67.5k. A list of these is scannable on a phone in a way that a column
+     * of 4,500 / 12,000 / 67,500 is not.
+     *
+     * The decimal appears only when it carries something - 4.5k but 9k, not
+     * 9.0k - and is dropped entirely past 100k, where a tenth of a thousand
+     * is noise. Anywhere a number gets ACTED on, a transfer amount above
+     * all, keep using miles() - 125k is not a figure to type into a
+     * transfer form. */
+    milesShort: function (n) {
+      if (n == null) return '—';
+      n = Math.round(n);
+      if (Math.abs(n) < 1000) return String(n);
+      var k = n / 1000;
+      if (Math.abs(k) >= 100) return Math.round(k) + 'k';
+      var r = Math.round(k * 10) / 10;
+      return (r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)) + 'k';
+    },
     money: function (n) {
       if (n == null) return '—';
       return '$' + Math.round(n).toLocaleString();

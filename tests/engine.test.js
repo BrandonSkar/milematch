@@ -1140,3 +1140,30 @@ test('every script the page loads is precached, and CACHE was bumped', () => {
   assert.match(sw, /const CACHE = 'milematch-v(\d+)'/,
     'the cache name carries the version that must change when assets do');
 });
+
+/* Compact points, the way every award table writes them. A column of
+ * 4.5k / 12k / 67.5k is scannable on a phone; 4,500 / 12,000 / 67,500 is not. */
+test('points are shortened the way award tables write them', () => {
+  const s = PB.fmt.milesShort;
+  assert.strictEqual(s(4500), '4.5k');
+  assert.strictEqual(s(9000), '9k', 'no 9.0k — the decimal must carry something');
+  assert.strictEqual(s(12500), '12.5k');
+  assert.strictEqual(s(67500), '67.5k');
+  assert.strictEqual(s(41500), '41.5k');
+});
+
+test('past 100k the tenths are noise and get dropped', () => {
+  assert.strictEqual(PB.fmt.milesShort(125430), '125k');
+  assert.strictEqual(PB.fmt.milesShort(99900), '99.9k', 'but just under, they still say something');
+});
+
+test('small and missing amounts are left alone', () => {
+  assert.strictEqual(PB.fmt.milesShort(750), '750', 'below 1k there is nothing to shorten');
+  assert.strictEqual(PB.fmt.milesShort(0), '0');
+  assert.strictEqual(PB.fmt.milesShort(null), '—');
+});
+
+test('the exact figure is still available for anything you act on', () => {
+  // A transfer amount gets typed into someone's bank; 125k is not that number.
+  assert.strictEqual(PB.fmt.miles(125430), '125,430');
+});

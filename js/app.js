@@ -1026,7 +1026,7 @@
         '<div class="headline-label">Cheapest way to book this</div>' +
         '<div class="headline-main">' +
           '<span class="headline-program">' + esc(best.program.short) + '</span>' +
-          '<span class="headline-cost">' + PB.fmt.miles(best.miles) + ' pts' +
+          '<span class="headline-cost" title="' + PB.fmt.miles(best.miles) + ' points">' + PB.fmt.milesShort(best.miles) + ' pts' +
             (best.taxes ? ' <em>+ ' + PB.fmt.money(best.taxes) + '</em>' : '') + '</span>' +
         '</div>' +
         '<div class="headline-sub">Instead of ' + PB.fmt.money(q.cashPrice) + ' cash · ' +
@@ -1072,9 +1072,9 @@
       r.portal.slice(0, 4).forEach(function (p) {
         html += '<div class="rank-row"><div class="rank-main">' +
           '<div class="rank-name">' + esc(p.name) + ' travel portal</div>' +
-          '<div class="rank-meta">' + p.cpp.toFixed(2) + '¢ per point · you hold ' + PB.fmt.miles(p.have) + '</div>' +
-          '</div><div class="rank-value">' + PB.fmt.miles(p.miles) + ' pts<small>' +
-          (p.affordable ? 'covered' : 'short ' + PB.fmt.miles(p.miles - p.have)) + '</small></div></div>';
+          '<div class="rank-meta">' + p.cpp.toFixed(2) + '¢ per point · you hold ' + PB.fmt.milesShort(p.have) + '</div>' +
+          '</div><div class="rank-value" title="' + PB.fmt.miles(p.miles) + ' points">' + PB.fmt.milesShort(p.miles) + ' pts<small>' +
+          (p.affordable ? 'covered' : 'short ' + PB.fmt.milesShort(p.miles - p.have)) + '</small></div></div>';
       });
       html += (portalAff.length ? '' : '<p class="hint">None of your portal balances cover this fare outright.</p>') + '</div>';
     }
@@ -1163,10 +1163,10 @@
       '<span class="result-program">' + esc(o.program.short) +
         (books.length ? '<em> · books ' + esc(books.join(', ')) + '</em>' : '') +
         (o.roundTripChart ? '<em> · round trip</em>' : '') + '</span>' +
-      '<span class="result-cost">' + PB.fmt.miles(o.miles) + '<small> pts</small></span>' +
+      '<span class="result-cost" title="' + PB.fmt.miles(o.miles) + ' points">' + PB.fmt.milesShort(o.miles) + '<small> pts</small></span>' +
       '<span class="result-tax">' + (o.taxes ? '+ ' + PB.fmt.money(o.taxes) : 'no fees') + '</span>' +
       '<span class="result-cpp ' + o.verdict + '">' + PB.fmt.cpp(o.cpp) + '</span>' +
-      (o.affordable ? '' : '<span class="result-short">short ' + PB.fmt.miles(o.shortfall) + '</span>') +
+      (o.affordable ? '' : '<span class="result-short">short ' + PB.fmt.milesShort(o.shortfall) + '</span>') +
       '</summary>';
 
     h += '<div class="result-body">';
