@@ -1153,3 +1153,60 @@ test('the sort bar stays hidden when there is nothing to sort', maybe, async () 
   const bar = await evaluate(`document.querySelector('#offersSort').innerHTML`);
   assert.strictEqual(bar, '', 'one flight has no order to argue about');
 });
+
+/* Regression: removing a chip while the input still held text deleted the
+ * WRONG one — or nothing at all.
+ *
+ * Pressing the mouse on a chip's × blurs the input, the blur commits whatever
+ * was typed, committing repaints every chip, and by the time the button is
+ * released the element that was pressed no longer exists. The click either
+ * vanishes or lands on whichever chip has since slid into that position. */
+test('removing a chip removes that chip, even with text still in the box', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
+  await typeText('geg');
+
+  /* ZZZ is a well-formed code for an airport we do not know, so it sits in the
+   * box uncommitted — exactly the state that makes blur do work mid-click. */
+  await evaluate(`(() => {
+    const el = document.querySelector('#fromInput');
+    el.focus();
+    el.value = 'ZZZ';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+
+  await clickField('#fromChips .apt-chip:nth-child(2) button');
+
+  const after = await chipsOn('from');
+  assert.ok(!after.includes('PDX'), 'the chip that was clicked is the one that goes');
+  assert.ok(after.includes('SEA'), 'and its neighbours stay');
+  assert.ok(after.includes('GEG'), 'including the one that would slide into its place');
+});
+
+/* Backspace pulls the last chip into the box to be edited. If that edit is
+ * then abandoned — click away with a half-typed code — the chip must come
+ * back, not evaporate. It was removed on the promise of being re-added. */
+test('a chip pulled back for editing survives the edit being abandoned', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('pdx');
+
+  // Pull PDX back, then rub out a character so it can no longer be committed.
+  await pressKey('Backspace', 8);
+  await pressKey('Backspace', 8);
+
+  // Click away without finishing.
+  await evaluate(`document.querySelector('#fromInput').blur()`);
+
+  const state = await evaluate(`({
+    chips: [...document.querySelectorAll('#fromChips .apt-chip')].map(c => c.firstChild.textContent),
+    box: document.querySelector('#fromInput').value.toUpperCase()
+  })`);
+
+  assert.deepStrictEqual(state.chips, ['SEA', 'PDX'],
+    'an abandoned edit puts the airport back rather than losing it');
+  assert.strictEqual(state.box, '', 'and the half-typed remains do not linger');
+});

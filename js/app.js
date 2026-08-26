@@ -1709,6 +1709,19 @@
     persistSearchForm();
   }
 
+  /* True while a chip's remove button is being pressed, and only while the
+   * input actually had focus.
+   *
+   * Pressing that button blurs the input, the blur commits whatever was typed,
+   * and committing repaints every chip — so the button being pressed is
+   * destroyed before the mouse comes back up. The click then either vanishes
+   * or lands on whichever chip has slid into that position, which is how
+   * clicking one badge's × deleted a different badge.
+   *
+   * Consumed by the blur handler, so a press that never becomes a click cannot
+   * leave it stuck on. */
+  var removingChip = false;
+
   function renderAirportChips() {
     [['from', '#fromChips'], ['to', '#toChips']].forEach(function (pair) {
       var which = pair[0];
@@ -1728,12 +1741,21 @@
         x.type = 'button';
         x.textContent = '×';
         x.setAttribute('aria-label', 'Remove ' + code);
+
+        /* pointerdown covers mouse, touch and pen alike. Only arm the guard if
+         * the input is actually focused — otherwise no blur is coming to
+         * consume it, and it would swallow the next real one. */
+        x.addEventListener('pointerdown', function () {
+          removingChip = document.activeElement === sideInput(which);
+        });
+
         x.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
           var list = sideList(which);
           var i = list.indexOf(code);
           if (i !== -1) list.splice(i, 1);
+          removingChip = false;
           afterAirportChange();
         });
         chip.appendChild(x);
@@ -1754,8 +1776,17 @@
       });
     }
 
+    /* A chip Backspace took back into the box. It was removed on the promise
+     * of being re-added, so an abandoned edit has to honour that. */
+    var pulled = null;
+
     function commit() {
-      if (addAirport(which, el.value)) { el.value = ''; afterAirportChange(); return true; }
+      if (addAirport(which, el.value)) {
+        el.value = '';
+        pulled = null;
+        afterAirportChange();
+        return true;
+      }
       return false;
     }
 
@@ -1781,13 +1812,27 @@
           /* Stop the browser deleting a character as well: without this the
            * recovered code arrives one letter short, PDX as PD. */
           e.preventDefault();
-          this.value = list.pop();
+          pulled = list.pop();
+          this.value = pulled;
           afterAirportChange();
         }
       }
     });
 
-    el.addEventListener('blur', function () { if (this.value.trim()) commit(); });
+    el.addEventListener('blur', function () {
+      // A chip is being removed: committing now would repaint the button
+      // out from under the click. The commit can wait for the next blur.
+      if (removingChip) { removingChip = false; return; }
+      if (!this.value.trim()) return;
+      if (commit()) return;
+
+      /* What is left cannot be an airport, so it is an abandoned edit. Put
+       * back the chip Backspace took, and clear the fragment - leaving "PD"
+       * sitting in the box looks like input while counting for nothing. */
+      if (pulled) { addAirport(which, pulled); pulled = null; }
+      this.value = '';
+      afterAirportChange();
+    });
   }
 
   /** What the current selection would cost, said plainly and before anything
