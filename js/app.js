@@ -56,9 +56,36 @@
       (PB.BUILD ? ' · build ' + PB.BUILD : '');
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      navigator.serviceWorker.register('sw.js').catch(function (e) {
+      /* An installed app is only re-checked for a new worker when it
+       * NAVIGATES, and a standalone window can sit open for days without ever
+       * doing that. Ask again whenever it returns to the foreground, which is
+       * the moment somebody is about to use it. */
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        document.addEventListener('visibilitychange', function () {
+          if (!document.hidden) { try { reg.update(); } catch (e) { /* offline */ } }
+        });
+      }).catch(function (e) {
         console.warn('Service worker registration failed', e);
       });
+
+      /* A new worker has taken over, so the HTML and scripts already running
+       * are the previous version.
+       *
+       * Say so rather than reloading underneath somebody mid-search. Every
+       * balance and search is in localStorage so nothing would be lost, but a
+       * page that reloads itself unannounced is its own kind of bug. */
+      var hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        // The first install has no previous controller. That is not an update.
+        if (!hadController) { hadController = true; return; }
+        var bar = $('#updateNotice');
+        if (bar) bar.hidden = false;
+      });
+
+      var reloadBtn = $('#reloadForUpdate');
+      if (reloadBtn) {
+        reloadBtn.addEventListener('click', function () { location.reload(); });
+      }
     }
   }
 

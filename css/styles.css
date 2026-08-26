@@ -829,3 +829,23 @@ footer {
   .seen { margin-left: 0; }
   #offersSort .seen { flex-basis: 100%; }
 }
+
+/* ── A newer version is ready ─────────────────────────────────
+ *
+ * Offered rather than forced. Everything is in localStorage so a reload
+ * would lose nothing, but a page that reloads itself unannounced is its own
+ * kind of bug — and it could land mid-search. */
+.update-notice {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: 1rem; z-index: 60;
+  display: flex; align-items: center; gap: .8rem;
+  background: var(--bg-elev-2); border: 1px solid var(--accent);
+  border-radius: 999px; padding: .5rem .5rem .5rem 1rem;
+  box-shadow: 0 6px 24px rgb(0 0 0 / .35);
+  font-size: .85rem; max-width: calc(100vw - 2rem);
+}
+.update-notice .btn { padding: .3rem .8rem; font-size: .8rem; }
+
+@media (max-width: 560px) {
+  .update-notice { left: .75rem; right: .75rem; transform: none; max-width: none; justify-content: space-between; }
+}

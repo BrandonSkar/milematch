@@ -13,6 +13,14 @@
 </head>
 <body>
 
+<!-- A new worker took over while the page was open, so what is running
+     is the previous version. Offered, not forced: reloading underneath
+     somebody mid-search is its own kind of bug. -->
+<div id="updateNotice" class="update-notice" hidden>
+  <span>A newer version of MileMatch is ready.</span>
+  <button type="button" id="reloadForUpdate" class="btn btn-primary">Reload</button>
+</div>
+
 <header class="topbar">
   <div class="brand">
     <svg viewBox="0 0 32 32" class="brand-mark" aria-hidden="true">

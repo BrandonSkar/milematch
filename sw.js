@@ -7,7 +7,7 @@
  * after it. Bump CACHE when you change any cached file anyway - it evicts the
  * old entries that would otherwise answer while offline.
  */
-const CACHE = 'milematch-v34';
+const CACHE = 'milematch-v35';
 
 const ASSETS = [
   './',
@@ -56,7 +56,7 @@ const NET_TIMEOUT_MS = 3500;
 function fromNetwork(req) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('network too slow')), NET_TIMEOUT_MS);
-    fetch(req).then(
+    fetch(req, { cache: 'no-cache' }).then(
       (res) => { clearTimeout(timer); resolve(res); },
       (err) => { clearTimeout(timer); reject(err); }
     );

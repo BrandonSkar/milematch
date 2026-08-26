@@ -42,6 +42,7 @@ function loadSW({ network, cached = {}, failToAdd = null }) {
   const handlers = {};
 
   const added = [];
+  const fetchInits = [];
   const caches = {
     async open() {
       return {
@@ -64,7 +65,7 @@ function loadSW({ network, cached = {}, failToAdd = null }) {
     URL, Response: FakeResponse,
     setTimeout: (fn) => { const t = { fn, cancelled: false }; timers.push(t); return t; },
     clearTimeout: (t) => { if (t) t.cancelled = true; },
-    fetch: (req) => network(req),
+    fetch: (req, init) => { fetchInits.push(init); return network(req); },
     caches,
     location: { origin: 'https://brandonskar.github.io' },
     self: {
@@ -80,6 +81,7 @@ function loadSW({ network, cached = {}, failToAdd = null }) {
     handlers,
     store,
     added,
+    fetchInits,
     /** Fire every pending timer — the network-timeout fallback. */
     fireTimers() { timers.filter((t) => !t.cancelled).forEach((t) => t.fn()); timers.length = 0; },
     /** Run the fetch handler and hand back whatever it responded with. */
@@ -235,4 +237,28 @@ test('the footer build number matches the service worker cache', () => {
   assert.ok(cache, "sw.js must declare a versioned CACHE");
   assert.strictEqual(build[1], cache[1],
     'bump both together, or the page will claim a version it is not serving');
+});
+
+/* GitHub Pages serves assets with max-age=600. A network-first fetch that
+ * honours the HTTP cache can hand back a ten-minute-old file and call it
+ * fresh — which would reintroduce the stale-deploy problem one layer down,
+ * where it is much harder to see. */
+test('the network fetch revalidates instead of trusting the HTTP cache', async () => {
+  const sw = loadSW({
+    network: async () => new FakeResponse('version 2'),
+    cached: { [PAGE]: new FakeResponse('version 1') }
+  });
+
+  await sw.handle(PAGE);
+  // Compared by field: the init is built inside the vm sandbox, so it is
+  // structurally identical to ours but not reference-equal.
+  assert.strictEqual(sw.fetchInits[0].cache, 'no-cache',
+    'revalidate — a 304 when nothing changed, not a blind ten-minute reuse');
+});
+
+test('a fare lookup is left to fetch normally', async () => {
+  const sw = loadSW({ network: async () => new FakeResponse('{}') });
+  await sw.handle('https://w.dev/search?origin=SEA');
+  assert.strictEqual(sw.fetchInits[0], undefined,
+    'the worker already refuses to cache these; no override needed');
 });
