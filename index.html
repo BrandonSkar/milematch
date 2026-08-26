@@ -57,7 +57,9 @@
 
   <form id="searchForm" class="card search-card">
     <div class="grid grid-route">
-      <label class="field">
+      <!-- for= is load-bearing here. Without it the label adopts the first
+           chip's remove button, and clicking the word "From" deletes an airport. -->
+      <label class="field" for="fromInput">
         <span>From <small>add several to compare</small></span>
         <div class="multi" id="fromMulti">
           <span class="multi-chips" id="fromChips"></span>
@@ -69,7 +71,7 @@
 
       <button type="button" id="swapBtn" class="swap" title="Swap origins and destinations" aria-label="Swap">⇄</button>
 
-      <label class="field">
+      <label class="field" for="toInput">
         <span>To <small>add several to compare</small></span>
         <div class="multi" id="toMulti">
           <span class="multi-chips" id="toChips"></span>

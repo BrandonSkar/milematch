@@ -111,6 +111,13 @@ main { max-width: 980px; margin: 0 auto; padding: 1.25rem; }
 /* ── Forms ───────────────────────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
 .field > span { font-size: .78rem; color: var(--text-dim); font-weight: 600; letter-spacing: .01em; }
+/* An aside, not part of the name. Without this it reads as one run-on
+ * phrase: "From add several to compare". */
+.field > span small {
+  font-weight: 400; color: var(--text-faint); letter-spacing: 0;
+  font-size: .92em; margin-left: .1rem;
+}
+.field > span small::before { content: "— "; }
 
 input, select, textarea, button { font: inherit; color: var(--text); }
 

@@ -1237,3 +1237,31 @@ test('the remove button is a real target, and confined to its own chip', maybe, 
   assert.ok(g.btn.t >= g.chip.t - slack && g.btn.b <= g.chip.b + slack,
     'nor above or below it — a click outside a badge must never delete it');
 });
+
+/* A <label> with no `for` labels its first labelable DESCENDANT. That used to
+ * be the airport input. Once chips arrived they came first in the DOM, and a
+ * chip's remove <button> is labelable too — so the label silently adopted it.
+ *
+ * Clicking the word "From", or any padding in that field, then activated the
+ * first chip's × and deleted the airport. Hovering the label lit it up, which
+ * is how it was spotted. */
+test('clicking the field label does not delete the first airport', maybe, async () => {
+  await clearSides();
+  await evaluate(`document.querySelector('#fromInput').focus()`);
+  await typeText('sea');
+  await typeText('sfo');
+  await typeText('sna');
+  assert.deepStrictEqual(await chipsOn('from'), ['SEA', 'SFO', 'SNA'], 'sanity');
+
+  await clickField('.grid-route > label:nth-of-type(1) > span');
+
+  assert.deepStrictEqual(await chipsOn('from'), ['SEA', 'SFO', 'SNA'],
+    'the label must point at the text box, not at the first chip’s remove button');
+});
+
+test('and the label still focuses the box it belongs to', maybe, async () => {
+  await evaluate(`document.querySelector('#fromInput').blur()`);
+  await clickField('.grid-route > label:nth-of-type(1) > span');
+  const focused = await evaluate(`document.activeElement.id`);
+  assert.strictEqual(focused, 'fromInput', 'which is the whole point of a label');
+});

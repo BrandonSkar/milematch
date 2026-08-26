@@ -30,7 +30,7 @@ window.PB = window.PB || {};
  * drift apart. It is printed in the footer so "am I on the new version?"
  * can be answered by looking at the page rather than by guessing at the
  * service worker. */
-PB.BUILD = 32;
+PB.BUILD = 33;
 
 PB.CONFIG = {
   /* e.g. 'https://milematch.yourname.workers.dev' */
