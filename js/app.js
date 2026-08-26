@@ -1500,41 +1500,75 @@
     allCards().filter(function (c) {
       return !filter || (c.name + ' ' + c.issuer).toLowerCase().indexOf(filter) !== -1;
     }).forEach(function (c) {
-      var on = state.simulatedCards.indexOf(c.id) !== -1;
+      var held = state.heldCards.indexOf(c.id) !== -1;
+      var on = !held && state.simulatedCards.indexOf(c.id) !== -1;
       var currencyName = (PB.CURRENCIES[c.currency] || PB.PROGRAMS[c.currency] || {}).short || c.currency;
-      var label = document.createElement('label');
-      label.className = 'cc' + (on ? ' is-on' : '');
-      label.innerHTML =
-        '<input type="checkbox"' + (on ? ' checked' : '') + '>' +
-        '<span class="cc-body">' +
-          '<span class="cc-name">' + esc(c.name) + '</span>' +
-          '<span class="cc-meta">' + esc(c.issuer) + ' · ' + esc(currencyName) +
-            (c.fee ? ' · $' + c.fee + '/yr' : ' · no annual fee') + '</span>' +
-          '<span class="cc-bonus">' + (c.bonus ? '+' + PB.fmt.miles(c.bonus) + ' pts' : 'no welcome bonus') +
-            (c.minSpend ? ' after $' + PB.fmt.miles(c.minSpend) + ' spend' : '') + '</span>' +
-          (c.note ? '<span class="cc-meta">' + esc(c.note) + '</span>' : '') +
-        '</span>';
 
-      $('input', label).addEventListener('change', function () {
+      /* The row is a div, not a label. A label forwards every click inside it
+       * to its checkbox, which would make "I have this" toggle the simulate box
+       * instead — the same trap as the airport remove button. */
+      var row = document.createElement('div');
+      row.className = 'cc' + (on ? ' is-on' : '') + (held ? ' is-held' : '');
+      row.innerHTML =
+        '<label class="cc-main">' +
+          '<input type="checkbox"' + (on ? ' checked' : '') + (held ? ' disabled' : '') + '>' +
+          '<span class="cc-body">' +
+            '<span class="cc-name">' + esc(c.name) + '</span>' +
+            '<span class="cc-meta">' + esc(c.issuer) + ' · ' + esc(currencyName) +
+              (c.fee ? ' · $' + c.fee + '/yr' : ' · no annual fee') + '</span>' +
+            '<span class="cc-bonus">' + (c.bonus ? '+' + PB.fmt.miles(c.bonus) + ' pts' : 'no welcome bonus') +
+              (c.minSpend ? ' after $' + PB.fmt.miles(c.minSpend) + ' spend' : '') + '</span>' +
+            (c.note ? '<span class="cc-meta">' + esc(c.note) + '</span>' : '') +
+            (held ? '<span class="cc-held-note">Bonus already earned — those points belong in your balance, not here.</span>' : '') +
+          '</span>' +
+        '</label>' +
+        '<button type="button" class="cc-held-btn' + (held ? ' is-on' : '') + '" ' +
+          'aria-pressed="' + (held ? 'true' : 'false') + '" ' +
+          'title="Stop offering this welcome bonus — you have already earned it">' +
+          (held ? 'Already earned' : 'I have this') +
+        '</button>';
+
+      $('input', row).addEventListener('change', function () {
         var idx = state.simulatedCards.indexOf(c.id);
         if (this.checked && idx === -1) state.simulatedCards.push(c.id);
         if (!this.checked && idx !== -1) state.simulatedCards.splice(idx, 1);
         PB.store.save();
-        label.classList.toggle('is-on', this.checked);
-        renderCardSimSummary();
-        renderBalances();
-        updateBalanceChip();
-        if (lastQuery && lastQuery.cashPrice) evaluateWith(lastQuery, lastQuery.cashPrice);
+        row.classList.toggle('is-on', this.checked);
+        afterCardChange();
       });
 
-      host.appendChild(label);
+      $('.cc-held-btn', row).addEventListener('click', function () {
+        var h = state.heldCards.indexOf(c.id);
+        if (h !== -1) {
+          state.heldCards.splice(h, 1);
+        } else {
+          state.heldCards.push(c.id);
+          /* Already earned means it cannot also be hypothetical. */
+          var s = state.simulatedCards.indexOf(c.id);
+          if (s !== -1) state.simulatedCards.splice(s, 1);
+        }
+        PB.store.save();
+        renderCards();
+        afterCardChange();
+      });
+
+      host.appendChild(row);
     });
+  }
+
+  /* Everything a card toggle invalidates, in one place. */
+  function afterCardChange() {
+    renderCardSimSummary();
+    renderBalances();
+    updateBalanceChip();
+    if (lastQuery && lastQuery.cashPrice) evaluateWith(lastQuery, lastQuery.cashPrice);
   }
 
   function renderCardSimSummary() {
     var cost = PB.cardCost(state.simulatedCards, state.customCards);
     $('#cardSimSummary').innerHTML =
       metric('Cards modelled', String(state.simulatedCards.length)) +
+      metric('Already earned', String(state.heldCards.length)) +
       metric('Bonus points added', PB.fmt.miles(cost.bonus)) +
       metric('First-year fees', PB.fmt.money(cost.fees)) +
       metric('Spend required', PB.fmt.money(cost.minSpend));
@@ -1552,7 +1586,9 @@
 
     var ranked = PB.rankCardsForTrip(q, state.balances, {
       customCards: state.customCards,
-      exclude: state.simulatedCards
+      /* Skip a card whose bonus is already in the balances being ranked against
+       * (double-count) or already earned (spent, and it will not repeat). */
+      exclude: state.simulatedCards.concat(state.heldCards)
     });
 
     if (ranked.error) { host.innerHTML = '<p class="empty">' + esc(ranked.error) + '</p>'; return; }

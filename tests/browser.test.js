@@ -1279,3 +1279,74 @@ test('and the label still focuses the box it belongs to', maybe, async () => {
   assert.strictEqual(focused, 'fromInput', 'which is the whole point of a label');
 });
 
+
+
+/* A welcome bonus pays once. Once you have earned and spent it those points are
+ * in your balance, so offering the bonus again builds a plan on points that no
+ * longer exist — the phantom-transfer failure, one tab over.
+ *
+ * The card row used to be a <label>, and a label forwards every click inside it
+ * to its checkbox. Dropping "I have this" in there would have made the button
+ * silently tick simulate instead, exactly like the airport chip's × getting
+ * adopted by the "From" label. The row is a <div> now; this holds it that way. */
+test('"I have this" marks the card earned instead of ticking simulate', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const pick = () => [...document.querySelectorAll('#cardList .cc')]
+      .find(el => el.querySelector('.cc-bonus').textContent.includes('+'));
+
+    const row = pick();
+    const box = row.querySelector('input[type=checkbox]');
+    if (!box.checked) box.click();               // start it simulated
+    const wasSimulated = box.checked;
+
+    row.querySelector('.cc-held-btn').click();   // the click under test
+
+    const after = pick();                        // renderCards replaced the node
+    const afterBox = after.querySelector('input[type=checkbox]');
+    return {
+      wasSimulated,
+      held: after.classList.contains('is-held'),
+      stillSimulated: afterBox.checked,
+      disabled: afterBox.disabled,
+      saved: JSON.parse(localStorage.getItem('pb.state.v1')).heldCards.length
+    };
+  })()`);
+
+  assert.ok(r.wasSimulated, 'sanity: the card started out simulated');
+  assert.ok(r.held, 'the row must come back marked as already earned');
+  assert.strictEqual(r.stillSimulated, false,
+    'a bonus you have already earned cannot also be hypothetical');
+  assert.ok(r.disabled, 'and it must not be simulatable again');
+  assert.strictEqual(r.saved, 1, 'the choice must reach storage');
+});
+
+test('an already-earned card is still earned after a reload', maybe, async () => {
+  await send('Page.reload');
+  await sleep(2000);
+
+  const r = await evaluate(`(() => {
+    const held = [...document.querySelectorAll('#cardList .cc.is-held')];
+    return {
+      count: held.length,
+      label: held.length ? held[0].querySelector('.cc-held-btn').textContent.trim() : ''
+    };
+  })()`);
+
+  assert.strictEqual(r.count, 1, 'it must survive leaving and coming back');
+  assert.strictEqual(r.label, 'Already earned');
+});
+
+/* Object.assign copies an array property by reference, so every state built
+ * from DEFAULTS used to share DEFAULTS' own arrays — ticking a card pushed
+ * into the defaults themselves, and reset() handed that same dirty array back. */
+test('resetting clears the earned cards instead of handing back the same array', maybe, async () => {
+  const r = await evaluate(`(() => {
+    PB.store.reset();
+    const after = PB.store.state.heldCards.length;
+    PB.store.load();
+    return { after, reloaded: PB.store.state.heldCards.length };
+  })()`);
+
+  assert.strictEqual(r.after, 0, 'reset must actually clear it');
+  assert.strictEqual(r.reloaded, 0, 'and the cleared state must be what was saved');
+});
