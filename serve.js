@@ -29,8 +29,15 @@ http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
   let file = path.join(ROOT, url === '/' ? 'index.html' : url);
 
-  // Refuse anything that escapes the project directory.
-  if (!path.resolve(file).startsWith(path.resolve(ROOT))) {
+  /* Refuse anything that escapes the project directory.
+   *
+   * The comparison has to include the separator. A bare prefix test says a
+   * sibling directory is inside this one whenever its name merely starts the
+   * same way — "…/Points Booking Agent-old" passes a startsWith check against
+   * "…/Points Booking Agent" and is then served happily. */
+  const resolved = path.resolve(file);
+  const root = path.resolve(ROOT);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     res.writeHead(403).end('Forbidden');
     return;
   }

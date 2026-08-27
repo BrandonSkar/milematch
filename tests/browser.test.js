@@ -1350,3 +1350,136 @@ test('resetting clears the earned cards instead of handing back the same array',
   assert.strictEqual(r.after, 0, 'reset must actually clear it');
   assert.strictEqual(r.reloaded, 0, 'and the cleared state must be what was saved');
 });
+
+/* ── Erasing and restoring ─────────────────────────────────────
+ *
+ * restoreSearchForm() only wrote fields that had a value, which made it an
+ * overlay rather than a restore. The two places that restore an EMPTY search
+ * are exactly where that shows: "Erase everything" and restoring a backup both
+ * left the previous dates, cash price and airline filters sitting in the form,
+ * where the next edit saved them straight back. */
+test('erasing everything really empties the search form', maybe, async () => {
+  const r = await evaluate(`(() => {
+    // Fill the form the way a search leaves it.
+    const set = (sel, v) => {
+      const el = document.querySelector(sel);
+      el.value = v;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    set('#dateInput', '2027-03-14');
+    set('#returnInput', '2027-03-21');
+    set('#cashInput', '1875');
+    set('#airlineInput', 'LH');
+    [...document.querySelectorAll('#airlineChips .chip-toggle')].slice(0, 2)
+      .forEach(b => b.click());
+
+    const before = {
+      date: document.querySelector('#dateInput').value,
+      cash: document.querySelector('#cashInput').value,
+      chips: document.querySelectorAll('#airlineChips .chip-toggle.is-on').length
+    };
+
+    // Erase, without the confirm() dialog stalling a headless run.
+    const realConfirm = window.confirm;
+    window.confirm = () => true;
+    try { document.querySelector('#resetBtn').click(); }
+    finally { window.confirm = realConfirm; }
+
+    return {
+      before,
+      date: document.querySelector('#dateInput').value,
+      returnDate: document.querySelector('#returnInput').value,
+      cash: document.querySelector('#cashInput').value,
+      typedAirlines: document.querySelector('#airlineInput').value,
+      chipsOn: document.querySelectorAll('#airlineChips .chip-toggle.is-on').length,
+      saved: JSON.parse(localStorage.getItem('pb.state.v1')).lastSearch
+    };
+  })()`);
+
+  assert.strictEqual(r.before.date, '2027-03-14', 'sanity: the form was filled in');
+  assert.strictEqual(r.before.cash, '1875', 'sanity: a cash price was entered');
+  assert.strictEqual(r.before.chips, 2, 'sanity: two airline chips were on');
+
+  assert.strictEqual(r.date, '', 'the departure date must be gone');
+  assert.strictEqual(r.returnDate, '', 'and the return date');
+  assert.strictEqual(r.cash, '', 'and the cash price');
+  assert.strictEqual(r.typedAirlines, '', 'and anything typed into the airline box');
+  assert.strictEqual(r.chipsOn, 0, 'and every airline chip must come back off');
+  assert.deepStrictEqual(r.saved.airlines || [], [],
+    'what is on screen and what is stored have to agree');
+});
+
+/* Erasing your balances changes the numbers every points figure was computed
+ * from, so leaving the previous answer on screen presents a ranking that no
+ * longer follows from anything in the app. */
+test('erasing everything takes the previous answer down with it', maybe, async () => {
+  const r = await evaluate(`(() => {
+    // Put a priced result on screen from a pasted fare.
+    document.querySelector('#bal-UR').value = 200000;
+    document.querySelector('#bal-UR').dispatchEvent(new Event('input', { bubbles: true }));
+    const chip = (sel, code) => {
+      const el = document.querySelector(sel);
+      el.value = code;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    chip('#fromInput', 'SEA'); chip('#toInput', 'LHR');
+    document.querySelector('#fareFallback').hidden = false;
+    const paste = document.querySelector('#pasteInput');
+    // Newlines via fromCharCode, so the escape survives the trip into Chrome.
+    paste.value = ['Delta', 'Nonstop', '9 hr 55 min', '$842']
+      .join(String.fromCharCode(10));
+    paste.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('#searchForm')
+      .dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+
+    const had = {
+      offers: !document.querySelector('#offersWrap').hidden,
+      results: document.querySelector('#results').children.length > 0
+    };
+
+    const realConfirm = window.confirm;
+    window.confirm = () => true;
+    try { document.querySelector('#resetBtn').click(); }
+    finally { window.confirm = realConfirm; }
+
+    return {
+      had,
+      offersHidden: document.querySelector('#offersWrap').hidden,
+      results: document.querySelector('#results').innerHTML,
+      paste: document.querySelector('#pasteInput').value,
+      balance: document.querySelector('#bal-UR').value
+    };
+  })()`);
+
+  assert.ok(r.had.offers, 'sanity: a flight list was on screen');
+  assert.ok(r.had.results, 'sanity: it had been priced in points');
+
+  assert.strictEqual(r.offersHidden, true, 'the flight list must go');
+  assert.strictEqual(r.results, '', 'and the points ranking built on the old balances');
+  assert.strictEqual(r.paste, '', 'and the pasted fares behind them');
+  assert.strictEqual(r.balance, '', 'sanity: the balance really was erased');
+});
+
+/* The Clear button belongs to the whole airline selection, not just the chips
+ * — a code typed into the overflow box filters exactly as hard. */
+test('typing an airline code reveals the control that clears it', maybe, async () => {
+  const r = await evaluate(`(() => {
+    const box = document.querySelector('#airlineInput');
+    const clear = document.querySelector('#clearAirlines');
+    box.value = '';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    const hiddenWhenEmpty = clear.hidden;
+
+    box.value = 'LH';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    const shownWhenTyped = !clear.hidden;
+
+    clear.click();
+    return { hiddenWhenEmpty, shownWhenTyped, afterClear: box.value };
+  })()`);
+
+  assert.ok(r.hiddenWhenEmpty, 'nothing selected, nothing to clear');
+  assert.ok(r.shownWhenTyped, 'a typed code is a filter, so Clear has to offer to remove it');
+  assert.strictEqual(r.afterClear, '', 'and clearing must actually clear it');
+});

@@ -1232,3 +1232,92 @@ test('a flight with no readable route is dropped, not bucketed as undefined', ()
   const groups = PB.flights.groupByRoute([seg('SEA', 'LHR'), {}, seg(null, 'CDG')]);
   assert.strictEqual(groups.length, 1);
 });
+
+/* ── Regressions ───────────────────────────────────────────────
+ *
+ * One test per bug that shipped, each named for the wrong behaviour rather
+ * than the right one, so a failure says what broke and not merely that
+ * something did. */
+
+/* A round-trip-only chart quotes a return you are obliged to book, so the
+ * surcharges on that return are payable too. Billing one leg of fees against
+ * a two-leg award understated the cash and flattered the cents-per-point of
+ * the one program that cannot be booked one way. */
+test('a round-trip-only award charges round-trip fees on a one-way search', () => {
+  const base = { from: PB.airports.SFO, to: PB.airports.NRT, distance: 5130, cabin: 'j', passengers: 1 };
+  const ow = PB.priceAward('NH', { ...base, roundTrip: false });
+  const rt = PB.priceAward('NH', { ...base, roundTrip: true });
+
+  assert.strictEqual(ow.miles, rt.miles, 'sanity: the chart price is the same either way');
+  assert.strictEqual(ow.taxes, rt.taxes,
+    'the fees must match the flying, which is a round trip in both cases');
+
+  // And a program that really can be booked one way must NOT be levelled up.
+  const avOw = PB.priceAward('AV', { ...base, roundTrip: false });
+  const avRt = PB.priceAward('AV', { ...base, roundTrip: true });
+  assert.ok(avOw.taxes < avRt.taxes, 'a one-way award still pays one-way fees');
+});
+
+/* The worker never read includedAirlineCodes, but it still reached the edge
+ * cache key — so ticking an airline chip made an identical search look new and
+ * spent another lookup against a 250-a-month allowance to fetch back exactly
+ * the same fares. Airlines are filtered from the result set instead. */
+test('picking airlines does not change the lookup, only what is shown', async () => {
+  const calls = [];
+  const realFetch = SANDBOX.fetch;
+  SANDBOX.fetch = (url) => {
+    calls.push(String(url));
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ offers: [] }) });
+  };
+  try {
+    const q = { from: 'SEA', to: 'JFK', date: '2026-11-15', cabin: 'y', passengers: 1 };
+    const settings = { proxyUrl: 'https://w.example.dev' };
+    await PB.flights.searchLive(q, settings);
+    await PB.flights.searchLive({ ...q, airlines: ['AA', 'AS'] }, settings);
+  } finally {
+    SANDBOX.fetch = realFetch;
+  }
+
+  const strip = (u) => {
+    const p = new URL(u).searchParams;
+    p.delete('_');
+    p.sort();
+    return p.toString();
+  };
+  assert.strictEqual(strip(calls[0]), strip(calls[1]),
+    'the same route and date must be the same paid search whatever is ticked');
+  assert.ok(!calls.some((u) => /airline/i.test(u)),
+    'no airline parameter may reach a worker that has never read one');
+});
+
+/* Filtering has to work in BOTH directions for that to be safe: widening the
+ * selection can only ever bring back flights the one search already returned. */
+test('widening the airline selection brings rows back without a new search', () => {
+  const offers = [
+    { id: 'a', price: 300, carrierCodes: ['AA'], stops: 0, bags: {} },
+    { id: 'b', price: 320, carrierCodes: ['AS'], stops: 0, bags: {} },
+    { id: 'c', price: 340, carrierCodes: ['DL'], stops: 0, bags: {} }
+  ];
+  assert.strictEqual(PB.flights.applyFilters(offers, { airlines: ['AA'] }).length, 1);
+  assert.strictEqual(PB.flights.applyFilters(offers, { airlines: ['AA', 'AS'] }).length, 2);
+  assert.strictEqual(PB.flights.applyFilters(offers, { airlines: [] }).length, 3,
+    'clearing the chips must restore every fare the search returned');
+});
+
+/* Only the non-alliance programs may carry an EXTRA_US_REACH row. The others
+ * restated what the alliance rule already derives, which can only agree with
+ * it or silently contradict it. */
+test('no program repeats reach its alliance already gives it', () => {
+  Object.keys(PB.EXTRA_US_REACH).forEach((pid) => {
+    const prog = PB.PROGRAMS[pid];
+    assert.ok(prog, pid + ' is not a program');
+    assert.strictEqual(prog.alliance, 'none',
+      pid + ' is in an alliance, so its carriers come from the alliance rule');
+  });
+
+  // The rule still has to produce the right answers.
+  assert.deepStrictEqual([...PB.usCarriersFor('AS')].sort(), ['AA', 'AS']);
+  assert.deepStrictEqual([...PB.usCarriersFor('AM')], ['DL'], 'Aeromexico is SkyTeam');
+  assert.deepStrictEqual([...PB.usCarriersFor('UA')], ['UA']);
+  assert.deepStrictEqual([...PB.usCarriersFor('B6')], ['B6'], 'and JetBlue still books itself');
+});

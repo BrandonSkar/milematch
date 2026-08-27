@@ -1,15 +1,16 @@
 /* Flight price providers.
  *
- * Three modes, in order of preference:
- *   1. 'proxy'  — live cash fares from Amadeus via your Cloudflare Worker.
- *   2. 'manual' — you paste the cash price you found on Google Flights. Always
- *                 works, needs zero setup, and is exactly as accurate as the
- *                 number you type.
- *   3. 'estimate' — a crude distance-based guess so you can try the app before
- *                 wiring anything up. NOT a real fare. Clearly labelled as such.
+ * Three ways a cash price arrives, and the app falls through them in order:
+ *   'live'   — real Google Flights fares through the Cloudflare Worker in
+ *              /worker, which calls SerpApi. Tried first, always.
+ *   'paste'  — you copy a results page and paste it here. The parser below
+ *              reads prices, airlines, stops and baggage notes out of the
+ *              text, so the filters keep working on a pasted list.
+ *   'manual' — you type one number. Zero setup, and exactly as accurate as
+ *              what you typed.
  *
- * A static site cannot call Amadeus directly: the browser blocks it on CORS and
- * your API key would be public. The Worker in /worker solves both.
+ * A static site cannot call the fare API directly: the browser blocks it on
+ * CORS and the API key would be public. The Worker solves both.
  */
 window.PB = window.PB || {};
 
@@ -67,11 +68,15 @@ window.PB = window.PB || {};
     });
     if (q.roundTrip && q.returnDate) params.set('returnDate', q.returnDate);
     if (q.nonStop) params.set('nonStop', 'true');
-    /* Airline filtering happens upstream at Amadeus so we don't burn quota
-     * fetching offers we'd only throw away client-side. */
-    if (q.airlines && q.airlines.length) {
-      params.set('includedAirlineCodes', q.airlines.join(','));
-    }
+    /* Airlines are deliberately NOT sent.
+     *
+     * The worker has never read this parameter, but it still landed in the
+     * cache key - so ticking a chip made an identical search look like a new
+     * one and spent another lookup to get back the same fares. Airline
+     * filtering is applied to the result set in applyFilters(), which is why
+     * changing the chips re-filters instantly without re-querying, and why it
+     * works in both directions: widening the selection can only bring back
+     * flights the search already returned. */
     /* The token only means anything alongside the search it came from, so it
      * is added to the same parameters rather than sent on its own. */
     if (departureToken) params.set('departureToken', departureToken);
@@ -189,21 +194,23 @@ window.PB = window.PB || {};
        * became the next entry's flight duration, and two Kayak rows merged
        * into one airline list. */
       var start = prevPriceIdx + 1;
-      var window = lines.slice(start, idx + 1).join(' | ');
+      /* Named `window` until it was noticed that this shadows the global one
+       * inside a file whose every other line assumes `window` is the browser. */
+      var context = lines.slice(start, idx + 1).join(' | ');
       prevPriceIdx = idx;
 
       var carriers = AIRLINE_WORDS.filter(function (name) {
-        return new RegExp('\\b' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(window);
+        return new RegExp('\\b' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(context);
       });
 
       var stops = null;
-      if (/\bnonstop\b|\bdirect\b/i.test(window)) stops = 0;
+      if (/\bnonstop\b|\bdirect\b/i.test(context)) stops = 0;
       else {
-        var sm = /(\d+)\s*stop/i.exec(window);
+        var sm = /(\d+)\s*stop/i.exec(context);
         if (sm) stops = parseInt(sm[1], 10);
       }
 
-      var dm = /(\d+)\s*hr\s*(?:(\d+)\s*min)?/i.exec(window);
+      var dm = /(\d+)\s*hr\s*(?:(\d+)\s*min)?/i.exec(context);
       var duration = dm ? (dm[1] + 'h' + (dm[2] ? ' ' + dm[2] + 'm' : '')) : '';
 
       // Google repeats the same itinerary in several places; collapse them.
@@ -224,7 +231,7 @@ window.PB = window.PB || {};
         currency: 'USD',
         carriers: carriers.length ? carriers : ['Unknown airline'],
         carrierCodes: carriers.map(codeFor).filter(Boolean),
-        bags: PB.flights.readBags(window),
+        bags: PB.flights.readBags(context),
         extensions: notes,
         itineraries: [],
         stops: stops == null ? null : stops,
@@ -343,7 +350,8 @@ window.PB = window.PB || {};
     return { included: included, extra: extra, unknown: unknown };
   };
 
-  /** Client-side filters for things Amadeus can't express as query params. */
+  /** Client-side filters for things the provider can't express as query
+   *  params, and the only filters a pasted list has at all. */
   PB.flights.applyFilters = function (offers, filters) {
     filters = filters || {};
     return offers.filter(function (o) {
@@ -376,14 +384,6 @@ window.PB = window.PB || {};
       return true;
     });
   };
-
-  
-
-  /* -------------------------------------------------------------------
-   * Rough offline fare estimate.
-   * A blunt distance curve so the app is usable with no API key. It is NOT
-   * a quoted fare and the UI always says so.
-   * ----------------------------------------------------------------- */
 
   /* -------------------------------------------------------------------
    * Google Flights deep links.
@@ -495,7 +495,6 @@ window.PB = window.PB || {};
     return links;
   };
 
-
   /* Several airport pairs, searched one at a time.
    *
    * Deliberately sequential. Nine searches fired at once spend nine lookups
@@ -544,7 +543,6 @@ window.PB = window.PB || {};
     return best;
   };
 
-
   /* Every airport pair worth searching.
    *
    * Not N-squared: if you drive to an airport and park, you fly back into that
@@ -587,7 +585,6 @@ window.PB = window.PB || {};
       });
     });
   };
-
 
   /* Which airports an offer actually flies between.
    *

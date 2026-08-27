@@ -29,7 +29,7 @@ PB.CURRENCIES = {
  * Airline programs you can actually ticket with.
  *
  *  chart      : which pricing model data/charts.js uses
- *               'distance' | 'region' | 'dynamic' | 'fixed'
+ *               'zoneDistance' | 'distance' | 'region' | 'dynamic' | 'fixed'
  *  alliance   : Star | oneworld | SkyTeam | none
  *  surcharge  : how badly this program passes through carrier-imposed fees (YQ)
  *               'none' | 'low' | 'medium' | 'high'  -> drives the taxes estimate
@@ -312,17 +312,18 @@ PB.ALLIANCE_US_CARRIERS = {
   SkyTeam:  ['DL']
 };
 
-/* Non-alliance programs, and any extra reach beyond the alliance rule. */
+/* Reach the alliance rule above does NOT already give you.
+ *
+ * Only the three non-alliance programs need a row: everything else inherits
+ * its carriers from its alliance, and repeating those here was five entries
+ * that could only ever agree with the rule or silently contradict it. Alaska,
+ * American, Delta, United and Aeromexico all listed exactly what oneworld,
+ * SkyTeam and Star already derive. */
 PB.EXTRA_US_REACH = {
-  EK: [],            // Emirates: own metal only for practical purposes
-  EY: ['AA'],        // Etihad has an American partnership
-  B6: ['B6'],        // JetBlue books JetBlue
-  WN: ['WN'],        // Southwest books Southwest
-  AM: ['DL'],        // Aeromexico is SkyTeam, reaches Delta
-  AS: ['AS', 'AA'],  // Alaska's own program, plus oneworld
-  AA: ['AA', 'AS'],
-  DL: ['DL'],
-  UA: ['UA']
+  EK: [],       // Emirates: own metal only for practical purposes
+  EY: ['AA'],   // Etihad has an American partnership
+  B6: ['B6'],   // JetBlue books JetBlue
+  WN: ['WN']    // Southwest books Southwest
 };
 
 /** US carriers a program can ticket. */

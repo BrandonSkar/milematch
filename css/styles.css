@@ -593,6 +593,13 @@ kbd {
 }
 .alt-sources.warn { color: var(--warn); border-top-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 .alt-sources b { color: var(--text); font-weight: 600; }
+/* Provenance, not a call to action: it sits at the end of the sentence it
+   qualifies and reads as a footnote until you want it. */
+.src-date {
+  font-family: var(--mono); font-size: .92em; color: var(--text-faint);
+  white-space: nowrap;
+}
+.src-date:hover { color: var(--accent); }
 
 .confidence.verified { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); border-style: solid; }
 
@@ -603,6 +610,10 @@ kbd {
   font-size: .68rem; font-family: var(--mono); color: var(--text-faint);
   border: 1px dashed var(--line); border-radius: 4px; padding: .1rem .35rem;
 }
+/* Where the chart is published, the badge is a link to it. It still has to
+   read as provenance rather than as one more action in the row. */
+a.confidence { text-decoration: none; }
+a.confidence:hover { border-style: solid; color: var(--accent); text-decoration: none; }
 
 /* ── Balances ────────────────────────────────────────────────── */
 .balance-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: .7rem; }

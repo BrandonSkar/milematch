@@ -9,9 +9,10 @@
  *
  * Cabin keys: y = economy, w = premium economy, j = business, f = first
  *
- * Two chart shapes:
- *   distance : ordered bands, [maxGreatCircleMiles, { y, w, j, f }]
- *   region   : "FROM-TO" keys, matched in either direction
+ * Three chart shapes:
+ *   distance     : ordered bands, [maxGreatCircleMiles, { y, w, j, f }]
+ *   region       : "FROM-TO" keys, matched in either direction
+ *   zoneDistance : "FROM-TO" keys, each holding its own distance bands
  */
 window.PB = window.PB || {};
 

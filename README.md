@@ -65,10 +65,11 @@ For the service worker and install prompt to work you need real HTTP:
 
 ```bash
 npm run serve        # http://localhost:8080
-npm test             # 41 engine tests (pure logic, no browser needed)
-npm run test:sw      # 11 service-worker tests, no browser needed
-npm run test:browser # DOM tests, drives real Chrome over the DevTools Protocol
-npm run test:all     # both suites
+npm test             # 97 engine tests (pure logic, no browser needed)
+npm run test:worker  # 28 fare-proxy tests, no network needed
+npm run test:sw      # 16 service-worker tests, no browser needed
+npm run test:browser # 51 DOM tests, drives real Chrome over the DevTools Protocol
+npm run test:all     # all four suites
 ```
 
 The browser suite skips itself if Chrome isn't installed. It exists because the
@@ -125,14 +126,19 @@ cabin-scaled estimate.
 Each program has a **baseline** cpp — your floor. Come in under it and the app
 says pay cash instead. Come in 50% above and it's flagged as excellent.
 
-**Four pricing models**, because programs genuinely differ:
+**Five pricing models**, because programs genuinely differ:
 
 | Model | Programs | How the price is derived |
 |---|---|---|
-| `distance` | Aeroplan, Avios (BA/Iberia/Qatar), Asia Miles, Qantas | Great-circle distance → band lookup |
+| `zoneDistance` | Aeroplan | Zone pair first, then distance bands *within* that pair |
+| `distance` | Avios (BA/Iberia/Qatar), Asia Miles, Qantas | Great-circle distance → band lookup |
 | `region` | LifeMiles, Turkish, ANA, Alaska, AA partners, KrisFlyer… | Zone pair → chart cell |
 | `dynamic` | United, Delta, Flying Blue, Emirates | Derived from the cash fare at a typical redemption rate |
 | `fixed` | Southwest, JetBlue | Revenue-based, a near-constant cents-per-point |
+
+Aeroplan gets its own model because it genuinely has one: pricing it on
+distance alone was out by -33% to +40%, cheap enough transatlantic to strand a
+transfer 15,000 points short.
 
 Programs with no chart entry for a route still appear, flagged `rough estimate`,
 so you never get a silently missing option.
@@ -154,7 +160,7 @@ in four plain files with no build step — edit a number, reload the page:
 | `data/programs.js` | Currencies, programs, transfer ratios, transfer bonuses, surcharge model |
 | `data/charts.js` | Distance and region award charts |
 | `data/cards.js` | Credit cards and welcome bonuses |
-| `data/airports.js` | ~250 airports with coordinates and award zones |
+| `data/airports.js` | ~330 airports with coordinates and award zones |
 
 Values were last reviewed as of the `asOf` date shown in the app's Settings tab.
 Treat every one of them as a starting point to verify, not as an authority —
@@ -166,13 +172,16 @@ especially sign-up bonuses, which are frequently targeted and vary by applicant.
 index.html              app shell
 css/styles.css          dark/light theme, no framework
 js/engine.js            pricing, transfers, valuation  ← all the real logic
-js/flights.js           fare providers (live / manual / estimate)
+js/flights.js           fare lookup, paste parsing, deep links
+js/balances.js          how old a hand-entered balance is
 js/store.js             localStorage persistence
 js/app.js               UI controller
 data/*.js               the editable reference data
 worker/                 optional Cloudflare Worker for live fares
-tests/engine.test.js    41 tests over the pricing engine
-tests/browser.test.js   10 DOM interaction tests in real Chrome
+tests/engine.test.js    97 tests over the pricing engine
+tests/worker.test.mjs   28 tests over the fare proxy
+tests/sw.test.mjs       16 tests over the service worker
+tests/browser.test.js   51 DOM interaction tests in real Chrome
 sw.js                   service worker (offline + installability)
 ```
 

@@ -38,8 +38,6 @@ window.PB = window.PB || {};
     return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(h))));
   };
 
-  /** Region-chart key, tried in both directions by lookupRegion(). */
-
   /* ---------------------------------------------------------------------
    * Chart lookups
    * ------------------------------------------------------------------- */
@@ -90,7 +88,7 @@ window.PB = window.PB || {};
 
   /* When a program has no chart entry for this region pair, fall back to a
    * distance-scaled guess so the option still appears — clearly flagged. */
-  function fallbackEstimate(programId, distMiles, cabin) {
+  function fallbackEstimate(distMiles, cabin) {
     var cabinMult = { y: 1, w: 1.4, j: 2.1, f: 3.1 }[cabin];
     var base = 8000 + distMiles * 4.2;
     return { miles: Math.round(base * cabinMult / 500) * 500, confidence: 'rough' };
@@ -150,18 +148,25 @@ window.PB = window.PB || {};
     }
 
     if (!result) {
-      result = fallbackEstimate(programId, dist, ctx.cabin);
+      result = fallbackEstimate(dist, ctx.cabin);
       result.source = 'No chart entry for this region pair — rough estimate only';
     }
     if (result.miles == null || isNaN(result.miles)) return null;
 
     /* ANA publishes round-trip prices; everything else is one-way. */
     var totalMiles;
+    /* Legs the traveller will actually fly, which is not always the legs they
+     * asked for. A round-trip-only chart quotes a return you have to book, so
+     * the surcharges on that return are payable too - charging one leg of fees
+     * against a two-leg award understates the out-of-pocket and flatters the
+     * cents-per-point of the one program that cannot be booked one way. */
+    var billedLegs = legs;
     if (prog.roundTripOnly) {
       totalMiles = result.miles;                       // chart is already RT
       result.roundTripChart = true;
+      billedLegs = 2;
       if (!ctx.roundTrip) {
-        result.note = 'ANA partner awards must be booked round trip — price shown is for the round trip.';
+        result.note = 'ANA partner awards must be booked round trip — the price and fees shown are for the round trip.';
       }
     } else {
       totalMiles = result.miles * legs;
@@ -173,7 +178,7 @@ window.PB = window.PB || {};
       programId: programId,
       miles: totalMiles,
       milesPerPerson: Math.round(totalMiles / (ctx.passengers || 1)),
-      taxes: PB.estimateTaxes(programId, dist, ctx.cabin, legs) * (ctx.passengers || 1),
+      taxes: PB.estimateTaxes(programId, dist, ctx.cabin, billedLegs) * (ctx.passengers || 1),
       confidence: result.confidence,
       source: result.source,
       /* Whether this program's chart has been checked against a published

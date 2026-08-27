@@ -200,13 +200,19 @@
     ['#nonStopInput', '#carryOnInput', '#checkedBagInput', '#airlineInput',
      '#strictAirlinesInput', '#onlyRelevantInput', '#verifiedOnlyInput'].forEach(function (sel) {
       $(sel).addEventListener('change', function () {
+        renderAirlineChips();
         updateFiltersNote();
         persistSearchForm();
-        // Re-filter what's already on screen instead of re-querying Amadeus.
+        // Re-filter what's already on screen instead of re-querying the proxy.
         if (liveOffers.length) applyOfferFilters();
       });
     });
-    $('#airlineInput').addEventListener('input', updateFiltersNote);
+    /* Typed codes are part of the selection too, so Clear has to appear for
+     * them as well — renderAirlineChips owns that button's visibility. */
+    $('#airlineInput').addEventListener('input', function () {
+      renderAirlineChips();
+      updateFiltersNote();
+    });
 
     $('#jumpToPoints').addEventListener('click', function () {
       var target = $('.headline') || $('#results');
@@ -446,17 +452,26 @@
     PB.store.patch({ lastSearch: readForm() });
   }
 
+  /* Put the form into exactly the state that was saved.
+   *
+   * Every field is WRITTEN, never merely written-if-present. Skipping the
+   * empty ones made this an overlay rather than a restore, and the two places
+   * that restore an EMPTY search are the two where that matters most: "Erase
+   * everything" and restoring a backup both left the previous dates, cash
+   * price and airline filters sitting in the form, where the next edit saved
+   * them straight back. */
   function restoreSearchForm() {
     var s = state.lastSearch || {};
     /* Saved state may predate multi-select, when from/to were single codes. */
     pickedFrom = (s.origins && s.origins.length) ? s.origins.slice() : (s.from ? [s.from] : []);
     pickedTo   = (s.destinations && s.destinations.length) ? s.destinations.slice() : (s.to ? [s.to] : []);
-    if (s.date) $('#dateInput').value = s.date;
-    if (s.returnDate) $('#returnInput').value = s.returnDate;
-    if (s.cabin) $('#cabinInput').value = s.cabin;
-    if (s.passengers) $('#paxInput').value = s.passengers;
-    if (s.cashPrice) $('#cashInput').value = s.cashPrice;
+    $('#dateInput').value = s.date || '';
+    $('#returnInput').value = s.returnDate || '';
+    $('#cabinInput').value = s.cabin || 'j';
+    $('#paxInput').value = s.passengers || 1;
+    $('#cashInput').value = s.cashPrice || '';
     $('#roundTripInput').checked = s.roundTrip !== false;
+    $('#returnField').style.opacity = $('#roundTripInput').checked ? '1' : '.45';
     $('#returnInput').disabled = !$('#roundTripInput').checked;
     $('#nonStopInput').checked = !!s.nonStop;
     $('#strictAirlinesInput').checked = !!s.strictAirlines;
@@ -465,19 +480,20 @@
     $('#carryOnInput').checked = !!s.freeCarryOn;
     $('#checkedBagInput').checked = !!s.freeChecked;
     if ($('#perPairInput')) $('#perPairInput').checked = !!s.perPairSearch;
-    /* Restore chips for anything in the curated list; the rest goes back into
-     * the free-text overflow box. */
-    if (s.airlines && s.airlines.length) {
-      var known = PB.POPULAR_AIRLINES.map(function (a) { return a.code; });
-      pickedAirlines = s.airlines.filter(function (c) { return known.indexOf(c) !== -1; });
-      var extra = s.airlines.filter(function (c) { return known.indexOf(c) === -1; });
-      if (extra.length) $('#airlineInput').value = extra.join(', ');
-    }
+    /* Chips for anything in the curated list; the rest goes back into the
+     * free-text overflow box. Both are cleared first, so a saved search with
+     * no airlines really does clear the airlines. */
+    var known = PB.POPULAR_AIRLINES.map(function (a) { return a.code; });
+    var saved = s.airlines || [];
+    pickedAirlines = saved.filter(function (c) { return known.indexOf(c) !== -1; });
+    $('#airlineInput').value = saved.filter(function (c) {
+      return known.indexOf(c) === -1;
+    }).join(', ');
 
     renderLiveHint();
     updateAirportHints();
     updateFiltersNote();
-    if ($('#airlineChips').children.length) renderAirlineChips();
+    renderAirlineChips();
     /* The chips ARE the selection, so every restore has to repaint them -
      * boot, an imported backup, and a reset all land here. */
     renderAirportChips();
@@ -941,11 +957,12 @@
 
   /* When these prices were actually seen.
    *
-   * The worker caches a search for CACHE_HOURS, so a fare that arrived in
-   * this browser a second ago may have been read from Google six hours back.
-   * Presenting that as current is the one dishonest thing a fare list can do,
-   * and it is the failure people notice - the price is gone when they click
-   * through. The oldest stamp in the set is the honest one to show. */
+   * The worker caches a search for CACHE_HOURS (6 by default), so a fare that
+   * arrived in this browser a second ago may have been read from Google six
+   * hours back. Presenting that as current is the one dishonest thing a fare
+   * list can do, and it is the failure people notice - the price is gone when
+   * they click through. The oldest stamp in the set is the honest one to show. */
+  var STALE_FARE_MS = 3 * 3600 * 1000;
   function seenLabel(offers) {
     var oldest = null;
     (offers || []).forEach(function (o) {
@@ -955,8 +972,12 @@
     if (oldest === null) return '';
 
     var text = PB.fmt.ago(new Date(oldest).toISOString());
-    // Past the worker cache window these are stale by definition, not merely old.
-    var stale = (Date.now() - oldest) > 3 * 3600 * 1000;
+    /* Halfway through the worker's cache window, not past it. The comment here
+     * used to claim these were "past the cache window" while checking 3 hours
+     * against a 6-hour window, which was simply wrong — but the number is
+     * still the one to use. Waiting the full six hours means nothing is ever
+     * flagged: the entry expires at exactly the moment it would qualify. */
+    var stale = (Date.now() - oldest) > STALE_FARE_MS;
     return '<span class="seen' + (stale ? ' is-stale' : '') + '">Prices seen ' +
       esc(text) + '</span>';
   }
@@ -1364,6 +1385,28 @@
            (o.pool.paths.length ? ' (including everything transferable in)' : '') + '.</div></div>';
     }
 
+    /* How old the transfer routes above are.
+     *
+     * A partnership that ended is the one error in this app that costs real
+     * money: it sends you to move points into a program that can no longer
+     * receive them, and transfers are irreversible. Every currency carries the
+     * date its partner list was last checked (PB.TRANSFER_SOURCES); the oldest
+     * one covering the routes shown is the honest date to print, and it links
+     * to the source so the claim is checkable rather than merely asserted. */
+    function transferProvenance(sources) {
+      var used = (sources.held || []).concat(sources.others || []);
+      var oldest = null;
+      used.forEach(function (s) {
+        var src = PB.TRANSFER_SOURCES[s.currency];
+        if (!src) return;
+        if (!oldest || src.verifiedOn < oldest.verifiedOn) oldest = src;
+      });
+      if (!oldest) return '';
+      return ' <a class="src-date" href="' + esc(oldest.url) + '" target="_blank" ' +
+             'rel="noopener" title="Issuer partner lists last checked against a ' +
+             'published source">Routes checked ' + esc(oldest.verifiedOn) + ' ↗</a>';
+    }
+
     /* Other ways into this program, so one suggested route never reads as the
      * only route. */
     if (o.sources && o.sources.total) {
@@ -1381,7 +1424,8 @@
           o.sources.others.map(function (s) { return esc(s.name); }).join(', '));
       }
       if (bits.length) {
-        h += '<p class="alt-sources">' + bits.join('. ') + '.</p>';
+        h += '<p class="alt-sources">' + bits.join('. ') +
+             '.' + transferProvenance(o.sources) + '</p>';
       }
     } else if (o.pool && !o.pool.paths.length && !o.pool.direct) {
       h += '<p class="alt-sources warn">No US credit card currency transfers to ' +
@@ -1389,12 +1433,22 @@
     }
 
     h += '<div class="option-links">';
-    h += '<span class="confidence' + (o.chartVerified ? ' verified' : '') + '" title="' +
-         (o.chartVerified
-           ? 'Checked against a published chart on ' + esc(o.verifiedOn || '')
-           : 'Approximate — not yet checked against a published source') + '">' +
-         esc(o.source) + (o.chartVerified ? ' · verified ' + esc(o.verifiedOn || '') : ' · unverified') +
-         '</span>';
+    /* "Verified" is a claim, and the chart that backs it is already carried
+     * here — so where there is one, the badge links to it. A date on its own
+     * asks to be taken on trust; a date you can click is checkable, which is
+     * the whole difference for a number people transfer points against. */
+    var badge = esc(o.source) +
+      (o.chartVerified ? ' · verified ' + esc(o.verifiedOn || '') : ' · unverified');
+    var badgeTitle = o.chartVerified
+      ? 'Checked against a published chart on ' + esc(o.verifiedOn || '') +
+        (o.sourceUrl ? ' — click to open it' : '')
+      : 'Approximate — not yet checked against a published source';
+    h += o.sourceUrl
+      ? '<a class="confidence' + (o.chartVerified ? ' verified' : '') + '" href="' +
+        esc(o.sourceUrl) + '" target="_blank" rel="noopener" title="' + badgeTitle + '">' +
+        badge + ' ↗</a>'
+      : '<span class="confidence' + (o.chartVerified ? ' verified' : '') +
+        '" title="' + badgeTitle + '">' + badge + '</span>';
     PB.flights.awardSearchLinks(q, o.programId).forEach(function (l) {
       h += '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.name) + ' ↗</a>';
     });
@@ -1523,6 +1577,19 @@
 
   function allCards() { return PB.CARDS.concat(state.customCards || []); }
 
+  /* What the bonus actually costs you to earn.
+   *
+   * Every card carries the window it allows, and leaving it out made $6,000
+   * in three months look identical to $6,000 in six — which is the difference
+   * between a bonus that is reachable and one that is not. The ranking
+   * already says it cannot judge minimum-spend difficulty; the least it can
+   * do is state the terms. */
+  function spendTerms(card) {
+    if (!card.minSpend) return '';
+    return ' after ' + PB.fmt.money(card.minSpend) + ' spend' +
+      (card.spendMonths ? ' in ' + card.spendMonths + ' months' : '');
+  }
+
   function renderCards() {
     var filter = ($('#cardSearch').value || '').toLowerCase();
     var host = $('#cardList');
@@ -1548,7 +1615,7 @@
             '<span class="cc-meta">' + esc(c.issuer) + ' · ' + esc(currencyName) +
               (c.fee ? ' · $' + c.fee + '/yr' : ' · no annual fee') + '</span>' +
             '<span class="cc-bonus">' + (c.bonus ? '+' + PB.fmt.miles(c.bonus) + ' pts' : 'no welcome bonus') +
-              (c.minSpend ? ' after $' + PB.fmt.miles(c.minSpend) + ' spend' : '') + '</span>' +
+              esc(spendTerms(c)) + '</span>' +
             (c.note ? '<span class="cc-meta">' + esc(c.note) + '</span>' : '') +
             (held ? '<span class="cc-held-note">Bonus already earned — those points belong in your balance, not here.</span>' : '') +
           '</span>' +
@@ -1640,7 +1707,7 @@
             (r.unlocks ? ' <span class="badge good">Unlocks the trip</span>' : ' <span class="badge info">Better rate</span>') +
           '</div>' +
           '<div class="rank-meta">+' + PB.fmt.miles(r.card.bonus) + ' ' + esc(r.currencyName) +
-            (r.card.minSpend ? ' after $' + PB.fmt.miles(r.card.minSpend) + ' spend' : '') +
+            esc(spendTerms(r.card)) +
             (r.card.fee ? ' · $' + r.card.fee + ' annual fee' : ' · no annual fee') +
             (r.best ? ' · books via ' + esc(r.best.program.short) + ' for ' + PB.fmt.miles(r.best.miles) + ' pts' : '') +
           '</div></div>' +
@@ -1712,7 +1779,7 @@
       try {
         state = PB.store.importJSON(area.value);
         renderBalances(); renderCards(); renderCardSimSummary();
-        updateBalanceChip(); restoreSearchForm();
+        updateBalanceChip(); restoreSearchForm(); clearSearchResults();
         area.hidden = true;
         alert('Backup restored.');
       } catch (e) {
@@ -1725,9 +1792,33 @@
       PB.store.reset();
       state = PB.store.load();
       renderBalances(); renderCards(); renderCardSimSummary();
-      updateBalanceChip(); restoreSearchForm();
-      $('#results').innerHTML = '';
+      updateBalanceChip(); restoreSearchForm(); clearSearchResults();
     });
+  }
+
+  /* Everything on screen that belonged to the previous search.
+   *
+   * Erasing your data or restoring a backup replaces the balances every
+   * points figure was computed from, so leaving the flight list and the
+   * rankings up presents numbers that no longer follow from anything in the
+   * app. Clearing the DOM alone is not enough either — the offers are still
+   * held in memory, and the next filter change would render them again. */
+  function clearSearchResults() {
+    liveOffers = [];
+    selectedOfferId = null;
+    returnsByOffer = {};
+    comboRows = [];
+    comboPicked = null;
+    lastResult = null;
+    lastQuery = null;
+    $('#results').innerHTML = '';
+    $('#offersWrap').hidden = true;
+    $('#comboWrap').hidden = true;
+    $('#jumpToPoints').hidden = true;
+    $('#pasteInput').value = '';
+    $('#pasteStatus').textContent = '';
+    $('#cardRanking').innerHTML = '';
+    setStatus('');
   }
 
   /* ═══════════════════ PWA install prompt ═════════════════════ */
@@ -1779,8 +1870,6 @@
 
     window.addEventListener('appinstalled', function () { btn.hidden = true; });
   }
-
-
 
   /* ── Several airports on each side ────────────────────────────
    *
@@ -1982,7 +2071,6 @@
     }
   }
 
-
   /* ── Searching every pair ─────────────────────────────────────── */
 
   var comboStop = false;
@@ -2034,8 +2122,6 @@
       bar.remove();
     }
   }
-
-
 
   function renderComboResults() {
     var host = $('#comboList');

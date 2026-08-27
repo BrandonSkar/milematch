@@ -1,4 +1,4 @@
-﻿/* Service worker.
+/* Service worker.
  * Two jobs: make the app installable as a desktop app, and make it work
  * offline. Your balances live in localStorage, so an offline launch still
  * gives you the full points engine — only live fare lookups need the network.
@@ -7,7 +7,7 @@
  * after it. Bump CACHE when you change any cached file anyway - it evicts the
  * old entries that would otherwise answer while offline.
  */
-const CACHE = 'milematch-v36';
+const CACHE = 'milematch-v37';
 
 const ASSETS = [
   './',
@@ -25,7 +25,10 @@ const ASSETS = [
   './data/cards.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  /* The manifest names this one too. Left out of the precache, an install
+     that first runs offline has no maskable icon to draw. */
+  './icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', (event) => {

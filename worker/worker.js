@@ -27,12 +27,6 @@
  *   CACHE_HOURS     how long an identical search is reused (default 6)
  */
 
-/* Best-effort per-IP rate limiting.
- *
- * Isolate-local, so it resets when Cloudflare recycles the isolate and is not
- * shared across colos. It will not stop a distributed abuser - it caps a
- * runaway script or one machine hammering the endpoint, which is the realistic
- * failure mode when the URL is baked into a public page. */
 /* Bump whenever the SHAPE of a normalised offer changes.
  *
  * The edge cache is keyed on the request URL, and deploying new code does not
@@ -42,6 +36,12 @@
  * them. Old entries are not deleted; they simply stop being addressed. */
 const PAYLOAD_VERSION = '2';
 
+/* Best-effort per-IP rate limiting.
+ *
+ * Isolate-local, so it resets when Cloudflare recycles the isolate and is not
+ * shared across colos. It will not stop a distributed abuser - it caps a
+ * runaway script or one machine hammering the endpoint, which is the realistic
+ * failure mode when the URL is baked into a public page. */
 const RATE = { windowMs: 60_000, maxPerWindow: 20 };
 const hits = new Map();
 
@@ -310,8 +310,7 @@ function normalize(data) {
           depart: f.departure_airport && f.departure_airport.time,
           arrive: f.arrival_airport && f.arrival_airport.time,
           carrierName: f.airline,
-          number: f.flight_number,
-          aircraft: f.airplane
+          number: f.flight_number
         }))
       }]
     };
@@ -323,7 +322,8 @@ function normalize(data) {
 function minutesToText(mins) {
   if (!mins) return '';
   const h = Math.floor(mins / 60), m = mins % 60;
-  return (h ? h + 'h ' : '') + (m ? m + 'm' : '').trim();
+  // Trim the WHOLE string: an exact-hour flight is "7h", never "7h ".
+  return ((h ? h + 'h ' : '') + (m ? m + 'm' : '')).trim();
 }
 
 function cors(origin) {
